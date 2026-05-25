@@ -34,6 +34,15 @@ export interface Attendance {
 
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
 
+export interface UserAccount {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  role: 'admin' | 'staff' | 'teacher';
+  createdAt: string;
+}
+
 export interface Payment {
   id: string;
   studentId: string;

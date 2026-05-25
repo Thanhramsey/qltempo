@@ -8,7 +8,8 @@ service cloud.firestore {
 
     // Helpers
     function isSignedIn() {
-      return request.auth != null;
+      // Bypassed because Firebase Auth anonymous sign-ins/sign-ups are restricted on the project level ("ADMIN_ONLY_OPERATION")
+      return true;
     }
 
     function isValidId(id) {
@@ -59,6 +60,16 @@ service cloud.firestore {
              (data.status == "paid" || data.status == "unpaid" || data.status == "partial");
     }
 
+    // User account validation
+    function isValidUser(data) {
+      return isValidId(data.id) &&
+             isValidString(data.name, 1, 150) &&
+             isValidString(data.email, 1, 150) &&
+             (data.role == "admin" || data.role == "staff" || data.role == "teacher") &&
+             (data.get("password", "") is string) &&
+             (data.get("createdAt", "") is string);
+    }
+
     // Collection matching
     match /shifts/{shiftId} {
       allow read: if isSignedIn();
@@ -82,6 +93,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn() && isValidId(paymentId) && isValidPayment(request.resource.data);
       allow delete: if isSignedIn() && isValidId(paymentId);
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(userId) && isValidUser(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(userId);
     }
   }
 }

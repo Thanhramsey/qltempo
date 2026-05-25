@@ -65,6 +65,20 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "studentId", "shiftId", "month", "amountPaid", "totalAmount", "status", "updatedAt"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Tài khoản quản trị hệ thống EduTrack Pro",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "password": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "staff", "teacher"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "email", "role", "createdAt"]
     }
   },
   "firestore": {
@@ -83,6 +97,10 @@
     "/payments/{paymentId}": {
       "schema": "Payment",
       "description": "Collection chứa lịch sử đóng học phí của học sinh"
+    },
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "Danh sách các tài khoản người dùng nội bộ để đăng nhập hệ thống"
     }
   }
 }

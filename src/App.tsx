@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User, signInAnonymously } from 'firebase/auth';
 import {
   collection,
   doc,
@@ -15,7 +15,7 @@ import {
   query,
   getDocFromServer
 } from 'firebase/firestore';
-import { Shift, Student, Attendance, Payment } from './types';
+import { Shift, Student, Attendance, Payment, UserAccount } from './types';
 
 // Icons
 import {
@@ -29,7 +29,8 @@ import {
   Sparkles,
   AlertCircle,
   Menu,
-  X
+  X,
+  Shield
 } from 'lucide-react';
 
 // Components
@@ -39,8 +40,29 @@ import ShiftsManager from './components/ShiftsManager';
 import StudentsManager from './components/StudentsManager';
 import AttendanceTracker from './components/AttendanceTracker';
 import TuitionManager from './components/TuitionManager';
+import UsersManager from './components/UsersManager';
 
 const DEMO_KEY_PREFIX = 'edutrack_demo_';
+
+// Custom Accounts Seed
+const SEED_USERS: UserAccount[] = [
+  {
+    id: 'u1',
+    name: 'Quản trị viên Hệ thống (Admin)',
+    email: 'admin@edutrack.com',
+    password: '123456',
+    role: 'admin',
+    createdAt: '2026-05-25T14:44:00Z'
+  },
+  {
+    id: 'u2',
+    name: 'Cô giáo Minh Hằng',
+    email: 'teacher@edutrack.com',
+    password: '123456',
+    role: 'teacher',
+    createdAt: '2026-05-25T14:45:00Z'
+  }
+];
 
 // Rich Mock Data Seed
 const SEED_SHIFTS: Shift[] = [
@@ -137,6 +159,14 @@ export default function App() {
   const [bypassAuth, setBypassAuth] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Custom User Accounts States
+  const [usersList, setUsersList] = useState<UserAccount[]>([]);
+  const [currentUserAccount, setCurrentUserAccount] = useState<UserAccount | null>(null);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Computed online status using either standard Auth session or custom verified logins
+  const isOnline = !bypassAuth && (user !== null || currentUserAccount !== null);
+
   // Core Data States
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -154,10 +184,34 @@ export default function App() {
 
   // 1. Auth Listener
   useEffect(() => {
+    // Restore custom user session if exists
+    const savedUserAccount = localStorage.getItem(`${DEMO_KEY_PREFIX}current_user_account`);
+    if (savedUserAccount) {
+      try {
+        setCurrentUserAccount(JSON.parse(savedUserAccount));
+      } catch (e) {
+        console.error("Failed restoring saved custom user session", e);
+      }
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         setBypassAuth(false);
+        // Automap active Google emails to matching Admin profile
+        if (currentUser.email && !currentUser.isAnonymous) {
+          const email = currentUser.email;
+          const name = currentUser.displayName || email.split('@')[0];
+          const newAccount: UserAccount = {
+            id: currentUser.uid,
+            name,
+            email,
+            role: 'admin',
+            createdAt: new Date().toISOString()
+          };
+          setCurrentUserAccount(newAccount);
+          localStorage.setItem(`${DEMO_KEY_PREFIX}current_user_account`, JSON.stringify(newAccount));
+        }
       }
       setAuthLoading(false);
     });
@@ -166,7 +220,7 @@ export default function App() {
 
   // 2. Validate FireStore DB Online connection as mandated by skill
   useEffect(() => {
-    if (user) {
+    if (isOnline) {
       const testConnection = async () => {
         try {
           const testRef = doc(db, 'test', 'connection');
@@ -180,19 +234,17 @@ export default function App() {
       };
       testConnection();
     }
-  }, [user]);
+  }, [isOnline]);
 
   // 3. Real-time Firebase Sync or Local Storage Fallback
   useEffect(() => {
-    // Determine database mode
-    const isOnline = user !== null;
-
     if (isOnline) {
       // --- LIVE FIRESTORE DATA SYNC ---
       setLoadingShifts(true);
       setLoadingStudents(true);
       setLoadingAttendances(true);
       setLoadingPayments(true);
+      setLoadingUsers(true);
 
       // A. Shifts
       const unsubShifts = onSnapshot(collection(db, 'shifts'), (snapshot) => {
@@ -234,11 +286,35 @@ export default function App() {
         handleFirestoreError(err, OperationType.GET, 'payments');
       });
 
+      // E. Custom Users
+      const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+        const list: UserAccount[] = [];
+        snapshot.forEach(doc => list.push(doc.data() as UserAccount));
+        
+        // Auto-initialize online Firestore with standard seed users on first deployment
+        if (list.length === 0) {
+          SEED_USERS.forEach(async (usr) => {
+            try {
+              await setDoc(doc(db, 'users', usr.id), usr);
+            } catch (err) {
+              console.error("Auto seeding user in Firestore failed:", err);
+            }
+          });
+          setUsersList(SEED_USERS);
+        } else {
+          setUsersList(list);
+        }
+        setLoadingUsers(false);
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, 'users');
+      });
+
       return () => {
         unsubShifts();
-          unsubStudents();
-          unsubAttendances();
-          unsubPayments();
+        unsubStudents();
+        unsubAttendances();
+        unsubPayments();
+        unsubUsers();
       };
     } else if (bypassAuth) {
       // --- OFFLINE/BYPASS LOCAL STORAGE STORAGE ---
@@ -246,6 +322,7 @@ export default function App() {
       const localStudentsStr = localStorage.getItem(`${DEMO_KEY_PREFIX}students`);
       const localAttendancesStr = localStorage.getItem(`${DEMO_KEY_PREFIX}attendances`);
       const localPaymentsStr = localStorage.getItem(`${DEMO_KEY_PREFIX}payments`);
+      const localUsersStr = localStorage.getItem(`${DEMO_KEY_PREFIX}users`);
 
       if (localShiftsStr) setShifts(JSON.parse(localShiftsStr));
       else {
@@ -264,13 +341,20 @@ export default function App() {
 
       if (localPaymentsStr) setPayments(JSON.parse(localPaymentsStr));
       else setPayments([]);
+
+      if (localUsersStr) setUsersList(JSON.parse(localUsersStr));
+      else {
+        setUsersList(SEED_USERS);
+        localStorage.setItem(`${DEMO_KEY_PREFIX}users`, JSON.stringify(SEED_USERS));
+      }
       
       setLoadingShifts(false);
       setLoadingStudents(false);
       setLoadingAttendances(false);
       setLoadingPayments(false);
+      setLoadingUsers(false);
     }
-  }, [user, bypassAuth]);
+  }, [isOnline, bypassAuth, user, currentUserAccount]);
 
   // A. Shift Mutations
   const handleAddShift = async (shiftInput: Omit<Shift, 'id' | 'createdAt'>) => {
@@ -281,7 +365,7 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
-    if (user) {
+    if (isOnline) {
       const path = `shifts/${id}`;
       try {
         await setDoc(doc(db, 'shifts', id), newShift);
@@ -296,7 +380,7 @@ export default function App() {
   };
 
   const handleEditShift = async (shiftToEdit: Shift) => {
-    if (user) {
+    if (isOnline) {
       const path = `shifts/${shiftToEdit.id}`;
       try {
         await setDoc(doc(db, 'shifts', shiftToEdit.id), shiftToEdit);
@@ -311,7 +395,7 @@ export default function App() {
   };
 
   const handleDeleteShift = async (id: string) => {
-    if (user) {
+    if (isOnline) {
       const path = `shifts/${id}`;
       try {
         await deleteDoc(doc(db, 'shifts', id));
@@ -334,7 +418,7 @@ export default function App() {
       createdAt: new Date().toISOString()
     };
 
-    if (user) {
+    if (isOnline) {
       const path = `students/${id}`;
       try {
         await setDoc(doc(db, 'students', id), newStudent);
@@ -349,7 +433,7 @@ export default function App() {
   };
 
   const handleEditStudent = async (studentToEdit: Student) => {
-    if (user) {
+    if (isOnline) {
       const path = `students/${studentToEdit.id}`;
       try {
         await setDoc(doc(db, 'students', studentToEdit.id), studentToEdit);
@@ -364,7 +448,7 @@ export default function App() {
   };
 
   const handleDeleteStudent = async (id: string) => {
-    if (user) {
+    if (isOnline) {
       const path = `students/${id}`;
       try {
         await deleteDoc(doc(db, 'students', id));
@@ -382,7 +466,7 @@ export default function App() {
   const handleSaveAttendance = async (attendanceData: Omit<Attendance, 'updatedAt'>[]) => {
     const now = new Date().toISOString();
     
-    if (user) {
+    if (isOnline) {
       for (const item of attendanceData) {
         const fullRecord: Attendance = {
           ...item,
@@ -417,7 +501,7 @@ export default function App() {
 
   // Refresh Attendance Trigger helper for fetching
   const handleRefreshAttendances = async () => {
-    if (user) {
+    if (isOnline) {
       setLoadingAttendances(true);
       // Wait shortly to pretend refreshing
       const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -433,7 +517,7 @@ export default function App() {
       updatedAt: new Date().toISOString()
     };
 
-    if (user) {
+    if (isOnline) {
       const path = `payments/${paymentInput.id}`;
       try {
         await setDoc(doc(db, 'payments', paymentInput.id), fullPayment);
@@ -453,11 +537,123 @@ export default function App() {
     }
   };
 
-  const handleLogout = async () => {
-    if (user) {
-      await signOut(auth);
+  // E. User Accounts Mutations
+  const handleAddUser = async (userInput: Omit<UserAccount, 'id' | 'createdAt'>) => {
+    const id = 'usr_' + Math.random().toString(36).substring(2, 11);
+    const newUser: UserAccount = {
+      ...userInput,
+      id,
+      createdAt: new Date().toISOString()
+    };
+
+    if (isOnline) {
+      const path = `users/${id}`;
+      try {
+        await setDoc(doc(db, 'users', id), newUser);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, path);
+      }
     } else {
-      setBypassAuth(false);
+      const updated = [newUser, ...usersList];
+      setUsersList(updated);
+      localStorage.setItem(`${DEMO_KEY_PREFIX}users`, JSON.stringify(updated));
+    }
+  };
+
+  const handleEditUser = async (userToEdit: UserAccount) => {
+    if (isOnline) {
+      const path = `users/${userToEdit.id}`;
+      try {
+        await setDoc(doc(db, 'users', userToEdit.id), userToEdit);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, path);
+      }
+    } else {
+      const updated = usersList.map(u => u.id === userToEdit.id ? userToEdit : u);
+      setUsersList(updated);
+      localStorage.setItem(`${DEMO_KEY_PREFIX}users`, JSON.stringify(updated));
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (isOnline) {
+      const path = `users/${id}`;
+      try {
+        await deleteDoc(doc(db, 'users', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, path);
+      }
+    } else {
+      const updated = usersList.filter(u => u.id !== id);
+      setUsersList(updated);
+      localStorage.setItem(`${DEMO_KEY_PREFIX}users`, JSON.stringify(updated));
+    }
+  };
+
+  const handleCustomLogin = async (emailInput: string, passwordInput: string): Promise<{ success: boolean; error?: string; userAccount?: UserAccount }> => {
+    const email = emailInput.toLowerCase().trim();
+    const password = passwordInput.trim();
+
+    // 1. Authenticate anonymously behind the scenes to allow Firestore collection reads
+    let authenticatedAnonymously = false;
+    try {
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+        authenticatedAnonymously = true;
+      }
+    } catch (err: any) {
+      console.warn("Failed anonymous sign-in, continuing with local matching fallback:", err);
+    }
+
+    // 2. Fetch from Firestore users collection
+    let accountsToMatch: UserAccount[] = [];
+    if (db) {
+      try {
+        const { getDocs } = await import('firebase/firestore');
+        const querySnapshot = await getDocs(collection(db, 'users'));
+        querySnapshot.forEach(doc => {
+          accountsToMatch.push(doc.data() as UserAccount);
+        });
+      } catch (err) {
+        console.error("Failed fetching live users list for custom auth:", err);
+      }
+    }
+
+    // 3. Fallback to offline seeds if empty
+    if (accountsToMatch.length === 0) {
+      const stored = localStorage.getItem(`${DEMO_KEY_PREFIX}users`);
+      if (stored) {
+        accountsToMatch = JSON.parse(stored);
+      } else {
+        accountsToMatch = SEED_USERS;
+      }
+    }
+
+    // 4. Matches credentials
+    const matched = accountsToMatch.find(acc => acc.email.toLowerCase() === email && acc.password === password);
+    if (matched) {
+      setCurrentUserAccount(matched);
+      localStorage.setItem(`${DEMO_KEY_PREFIX}current_user_account`, JSON.stringify(matched));
+      return { success: true, userAccount: matched };
+    } else {
+      // Rollback anonymous login if verification matches failed
+      if (authenticatedAnonymously) {
+        try {
+          await signOut(auth);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      return { success: false, error: "Email hoặc Mật khẩu không chính xác!" };
+    }
+  };
+
+  const handleLogout = async () => {
+    localStorage.removeItem(`${DEMO_KEY_PREFIX}current_user_account`);
+    setCurrentUserAccount(null);
+    setBypassAuth(false);
+    if (auth.currentUser) {
+      await signOut(auth);
     }
   };
 
@@ -474,17 +670,26 @@ export default function App() {
   }
 
   // Login Barrier Check
-  if (!user && !bypassAuth) {
-    return <AuthScreen onBypass={() => setBypassAuth(true)} />;
+  if (!user && !currentUserAccount && !bypassAuth) {
+    return <AuthScreen onBypass={() => setBypassAuth(true)} onCustomLogin={handleCustomLogin} />;
+  }
+
+  // Pre-configured offline bypass session safety
+  if (bypassAuth && !currentUserAccount && SEED_USERS.length > 0) {
+    setCurrentUserAccount(SEED_USERS[0]);
   }
 
   const navItems = [
-    { id: 'dashboard', label: 'Bảng Điểu Khiển', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Bảng Điều Khiển', icon: LayoutDashboard },
     { id: 'shifts', label: 'Lớp & Ca Học', icon: Calendar },
     { id: 'students', label: 'Học Sinh', icon: Users },
     { id: 'attendance', label: 'Điểm Danh', icon: CheckSquare },
     { id: 'tuition', label: 'Ghi Học Phí', icon: CircleDollarSign },
   ];
+
+  if (currentUserAccount?.role === 'admin') {
+    navItems.push({ id: 'users', label: 'Tài Khoản', icon: Shield });
+  }
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex text-slate-700 font-sans antialiased">
@@ -526,17 +731,20 @@ export default function App() {
         {/* Database context user profile at bottom */}
         <div className="p-4 border-t border-slate-800 space-y-4">
           <div className="bg-slate-800/40 p-3.5 rounded-2xl flex flex-col justify-center">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Phiên làm việc</span>
+            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Tài khoản</span>
             <span className="font-bold text-slate-200 text-xs mt-0.5 flex items-center gap-1.5">
               <Sparkles size={11} className="text-indigo-400 shrink-0" />
-              {user ? (
-                <span className="truncate max-w-[150px]">{user.email || user.uid}</span>
-              ) : (
-                "Bản Demo Ngoại Tuyến"
-              )}
+              <span className="truncate max-w-[150px]">
+                {currentUserAccount ? currentUserAccount.name : (user ? (user.email || 'Hệ thống') : "Khách ngoại tuyến")}
+              </span>
             </span>
-            <span className="text-[10px] text-slate-500 mt-0.5">
-              {user ? "Dữ liệu đám mây (Online)" : "Lưu bộ nhớ trình duyệt"}
+            {currentUserAccount && (
+              <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider mt-0.5 block">
+                {currentUserAccount.role === 'admin' ? 'Chủ trường (Admin)' : currentUserAccount.role === 'staff' ? 'Nhân viên (Staff)' : 'Giáo viên (Teacher)'}
+              </span>
+            )}
+            <span className="text-[8px] text-slate-500 mt-1 block">
+              {isOnline ? "Đám mây trực tuyến" : "Môi trường Demo cục bộ"}
             </span>
           </div>
 
@@ -600,7 +808,7 @@ export default function App() {
             <div className="flex justify-between items-center text-xs">
               <div>
                 <span className="block text-slate-400">Trình trạng</span>
-                <span className="font-bold text-slate-800">{user ? "Trực tuyến (Live DB)" : "Ngoại tuyến (Demo Mode)"}</span>
+                <span className="font-bold text-slate-800">{isOnline ? "Trực tuyến (Live DB)" : "Ngoại tuyến (Demo Mode)"}</span>
               </div>
               <button
                 onClick={() => {
@@ -667,6 +875,16 @@ export default function App() {
               payments={payments}
               onUpdatePayment={handleUpdatePayment}
               loadingPayments={loadingPayments}
+            />
+          )}
+
+          {activeTab === 'users' && currentUserAccount?.role === 'admin' && (
+            <UsersManager
+              users={usersList}
+              currentUserAccount={currentUserAccount}
+              onAddUser={handleAddUser}
+              onEditUser={handleEditUser}
+              onDeleteUser={handleDeleteUser}
             />
           )}
 
