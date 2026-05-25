@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "Shift": {
+      "title": "Shift",
+      "description": "Thông tin ca học của lớp học",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "time": { "type": "string" },
+        "days": { "type": "array" },
+        "course": { "type": "string" },
+        "fee": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "time", "days", "course", "fee"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Thông tin học sinh",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "shifts": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "joinDate": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "phone", "shifts", "status", "joinDate"]
+    },
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Điểm danh chuyên cần hàng ngày",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "shiftId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "status": { "type": "string", "enum": ["present", "absent_excused", "absent_unexcused"] },
+        "note": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "date", "shiftId", "studentId", "status", "updatedAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Quản lý học phí và thanh toán của học sinh",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "shiftId": { "type": "string" },
+        "month": { "type": "string" },
+        "amountPaid": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["paid", "unpaid", "partial"] },
+        "paymentDate": { "type": "string" },
+        "note": { "type": "string" },
+        "receiptUrl": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "studentId", "shiftId", "month", "amountPaid", "totalAmount", "status", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/shifts/{shiftId}": {
+      "schema": "Shift",
+      "description": "Collection chứa danh sách các ca học"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Collection chứa danh sách học sinh"
+    },
+    "/attendances/{attendanceId}": {
+      "schema": "Attendance",
+      "description": "Collection chứa chi tiết điểm danh từng ngày và ca học"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Collection chứa lịch sử đóng học phí của học sinh"
+    }
+  }
+}

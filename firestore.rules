@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    function isValidString(val, minSize, maxSize) {
+      return val is string && val.size() >= minSize && val.size() <= maxSize;
+    }
+
+    // Shift validation
+    function isValidShift(data) {
+      return isValidId(data.id) &&
+             isValidString(data.name, 1, 100) &&
+             isValidString(data.time, 1, 100) &&
+             isValidString(data.course, 1, 100) &&
+             data.days is list &&
+             data.fee is number && data.fee >= 0;
+    }
+
+    // Student validation
+    function isValidStudent(data) {
+      return isValidId(data.id) &&
+             isValidString(data.name, 1, 100) &&
+             isValidString(data.phone, 1, 50) &&
+             data.shifts is list &&
+             (data.status == "active" || data.status == "inactive") &&
+             isValidString(data.joinDate, 8, 20);
+    }
+
+    // Attendance validation
+    function isValidAttendance(data) {
+      return isValidId(data.id) &&
+             isValidString(data.date, 10, 10) &&
+             isValidString(data.shiftId, 1, 100) &&
+             isValidString(data.studentId, 1, 100) &&
+             (data.status == "present" || data.status == "absent_excused" || data.status == "absent_unexcused");
+    }
+
+    // Payment validation
+    function isValidPayment(data) {
+      return isValidId(data.id) &&
+             isValidString(data.studentId, 1, 100) &&
+             isValidString(data.shiftId, 1, 100) &&
+             isValidString(data.month, 1, 20) &&
+             data.amountPaid is number && data.amountPaid >= 0 &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             (data.status == "paid" || data.status == "unpaid" || data.status == "partial");
+    }
+
+    // Collection matching
+    match /shifts/{shiftId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(shiftId) && isValidShift(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(shiftId);
+    }
+
+    match /students/{studentId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(studentId) && isValidStudent(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(studentId);
+    }
+
+    match /attendances/{attendanceId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(attendanceId) && isValidAttendance(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(attendanceId);
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(paymentId) && isValidPayment(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(paymentId);
+    }
+  }
+}
