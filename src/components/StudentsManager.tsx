@@ -579,10 +579,10 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px] text-left border-collapse">
+            <table className="w-full min-w-[980px] text-left border-collapse">
               <thead>
                 <tr className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 border-b border-indigo-300 text-white text-xs font-bold uppercase tracking-wider shadow-sm">
-                  <th className="px-6 py-4">Họ và Tên</th>
+                  <th className="px-6 py-4 min-w-[250px]">Họ và Tên</th>
                   <th className="px-6 py-4">Liên hệ (SĐT / Email)</th>
                   <th className="px-6 py-4">Ngày sinh</th>
                   <th className="px-6 py-4">Lớp chính - Ca đăng ký</th>
@@ -610,8 +610,10 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                           : 'hover:bg-slate-50/50'
                       }`}
                     >
-                      <td className="px-6 py-4">
-                        <div className={`inline-flex items-center px-2.5 py-1 rounded-lg border font-extrabold text-sm shadow-xs ${
+                      <td className="px-6 py-4 min-w-[250px]">
+                        <div
+                          title={student.name}
+                          className={`inline-flex max-w-[240px] items-center px-2.5 py-1 rounded-lg border font-extrabold text-sm shadow-xs whitespace-nowrap overflow-hidden text-ellipsis ${
                           birthdayToday
                             ? 'bg-amber-100 border-amber-300 text-amber-800'
                             : 'bg-indigo-50 border-indigo-100 text-indigo-800'
