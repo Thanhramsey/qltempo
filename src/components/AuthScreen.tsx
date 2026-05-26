@@ -187,7 +187,7 @@ export default function AuthScreen({ onCustomLogin }: AuthScreenProps) {
           </div>
 
           {/* Quick guide accounts reference block for easy testing */}
-          <div className="bg-slate-50 rounded-2xl p-4 text-[11px] leading-relaxed border border-slate-100 text-slate-500">
+          {/* <div className="bg-slate-50 rounded-2xl p-4 text-[11px] leading-relaxed border border-slate-100 text-slate-500">
             <span className="font-bold text-slate-700 uppercase block text-[9px] tracking-wider mb-1">Tài khoản mẫu để thử nghiệm nhanh:</span>
             <div className="space-y-1">
               <div>• Email: <strong className="text-slate-700 font-mono">admin@edutrack.com</strong> | MK: <strong className="text-slate-700 font-mono">123456</strong></div>
@@ -196,7 +196,7 @@ export default function AuthScreen({ onCustomLogin }: AuthScreenProps) {
             <span className="block mt-2 text-[9px] text-slate-400">
               * Khi đăng nhập bằng tài khoản nội bộ trực tuyến, hệ thống sẽ tự động cấu hình bộ nhớ đảm bảo trải nghiệm thông suốt.
             </span>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

@@ -31,7 +31,8 @@ import {
   AlertCircle,
   Menu,
   X,
-  Shield
+  Shield,
+  BookOpen
 } from 'lucide-react';
 
 // Components
@@ -43,6 +44,7 @@ import AttendanceTracker from './components/AttendanceTracker';
 import TuitionManager from './components/TuitionManager';
 import UsersManager from './components/UsersManager';
 import ReportsManager from './components/ReportsManager';
+import UsageGuide from './components/UsageGuide';
 
 const DEMO_KEY_PREFIX = 'edutrack_demo_';
 
@@ -699,11 +701,12 @@ export default function App() {
 
   const navItems = [
     { id: 'dashboard', label: 'Bảng Điều Khiển', icon: LayoutDashboard },
-    { id: 'reports', label: 'Báo Cáo', icon: BarChart3 },
     { id: 'shifts', label: 'Lớp & Ca Học', icon: Calendar },
     { id: 'students', label: 'Học Sinh', icon: Users },
     { id: 'attendance', label: 'Điểm Danh', icon: CheckSquare },
     { id: 'tuition', label: 'Ghi Học Phí', icon: CircleDollarSign },
+    { id: 'reports', label: 'Báo Cáo', icon: BarChart3 },
+    { id: 'guide', label: 'Hướng Dẫn', icon: BookOpen },
   ];
 
   if (currentUserAccount?.role === 'admin') {
@@ -874,6 +877,10 @@ export default function App() {
               attendances={attendances}
               payments={payments}
             />
+          )}
+
+          {activeTab === 'guide' && (
+            <UsageGuide />
           )}
 
           {activeTab === 'students' && (
