@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Student, Shift, Attendance } from '../types';
 import {
   Users,
@@ -25,6 +25,7 @@ import {
   Bell,
   Sun,
   Moon,
+  Cake,
   type LucideIcon,
 } from 'lucide-react';
 import { exportStudentsList } from '../utils/csvExport';
@@ -55,6 +56,15 @@ function formatDateString(date: Date | null): string {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function isTodayBirthday(birthDate?: string): boolean {
+  if (!birthDate) return false;
+  const [y, m, d] = birthDate.split('-').map(Number);
+  if (!y || !m || !d) return false;
+
+  const today = new Date();
+  return today.getMonth() + 1 === m && today.getDate() === d;
 }
 
 interface ShiftColorTheme {
@@ -159,6 +169,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedShiftDayFilter, setSelectedShiftDayFilter] = useState<string>('all');
   const [selectedShiftFilter, setSelectedShiftFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
@@ -197,6 +208,19 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
   const availableDays = useMemo(() => {
     return Array.from(new Set(sortedShifts.map((sh) => getShiftDay(sh))));
   }, [sortedShifts]);
+
+  const shiftsForListFilter = useMemo(() => {
+    if (selectedShiftDayFilter === 'all') return sortedShifts;
+    return sortedShifts.filter((shift) => getShiftDay(shift) === selectedShiftDayFilter);
+  }, [sortedShifts, selectedShiftDayFilter]);
+
+  useEffect(() => {
+    if (selectedShiftFilter === 'all') return;
+    const stillExists = shiftsForListFilter.some((shift) => shift.id === selectedShiftFilter);
+    if (!stillExists) {
+      setSelectedShiftFilter('all');
+    }
+  }, [selectedShiftDayFilter, selectedShiftFilter, shiftsForListFilter]);
 
   const filteredFormShifts = useMemo(() => {
     const q = formShiftSearch.trim().toLowerCase();
@@ -328,9 +352,22 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       student.phone.includes(searchQuery) ||
       (student.email && student.email.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const matchesShift =
-      selectedShiftFilter === 'all' ||
-      (student.shifts && student.shifts.includes(selectedShiftFilter));
+    const matchesShift = (() => {
+      if (!student.shifts || student.shifts.length === 0) return false;
+
+      if (selectedShiftFilter !== 'all') {
+        return student.shifts.includes(selectedShiftFilter);
+      }
+
+      if (selectedShiftDayFilter !== 'all') {
+        return student.shifts.some((shiftId) => {
+          const shift = shifts.find((sh) => sh.id === shiftId);
+          return shift ? getShiftDay(shift) === selectedShiftDayFilter : false;
+        });
+      }
+
+      return true;
+    })();
 
     const matchesStatus =
       statusFilter === 'all' ||
@@ -465,7 +502,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       </div>
 
       {/* Filters & Search */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
         {/* Search Input */}
         <div className="relative">
           <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
@@ -478,16 +515,38 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
           />
         </div>
 
+        {/* Filter by Weekday */}
+        <div className="relative">
+          <CalendarIcon className="absolute left-3 top-2.5 text-slate-400" size={16} />
+          <select
+            value={selectedShiftDayFilter}
+            onChange={(e) => setSelectedShiftDayFilter(e.target.value)}
+            className="tempo-select w-full pl-10 py-2 rounded-xl text-slate-700 text-sm font-medium bg-white cursor-pointer"
+          >
+            <option value="all">Tất cả thứ</option>
+            {availableDays.map((day) => {
+              const count = sortedShifts.filter((shift) => getShiftDay(shift) === day).length;
+              return (
+                <option key={day} value={day}>{day} ({count} ca)</option>
+              );
+            })}
+          </select>
+        </div>
+
         {/* Filter by Shift */}
         <div className="relative">
           <Filter className="absolute left-3 top-2.5 text-slate-400" size={16} />
           <select
             value={selectedShiftFilter}
             onChange={(e) => setSelectedShiftFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-indigo-500 font-medium appearance-none bg-white cursor-pointer"
+            className="tempo-select w-full pl-10 py-2 rounded-xl text-slate-700 text-sm font-medium bg-white cursor-pointer"
           >
-            <option value="all">Tất cả ca học ({shifts.length})</option>
-            {shifts.map(sh => (
+            <option value="all">
+              {selectedShiftDayFilter === 'all'
+                ? `Tất cả ca học (${shifts.length})`
+                : `Tất cả ca của ${selectedShiftDayFilter} (${shiftsForListFilter.length})`}
+            </option>
+            {shiftsForListFilter.map(sh => (
               <option key={sh.id} value={sh.id}>{sh.name} ({sh.course})</option>
             ))}
           </select>
@@ -499,7 +558,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-indigo-500 font-medium appearance-none bg-white cursor-pointer"
+            className="tempo-select w-full pl-10 py-2 rounded-xl text-slate-700 text-sm font-medium bg-white cursor-pointer"
           >
             <option value="all">Tất cả trạng thái</option>
             <option value="active">Đang theo học (Active)</option>
@@ -522,7 +581,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
           <div className="overflow-x-auto">
             <table className="w-full min-w-[800px] text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                <tr className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 border-b border-indigo-300 text-white text-xs font-bold uppercase tracking-wider shadow-sm">
                   <th className="px-6 py-4">Họ và Tên</th>
                   <th className="px-6 py-4">Liên hệ (SĐT / Email)</th>
                   <th className="px-6 py-4">Ngày sinh</th>
@@ -540,12 +599,31 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                   }).filter(Boolean);
                   const progress = getStudentCycleProgress(attendances, student.id);
                   const progressPercent = Math.round((progress.currentCycleSessions / COURSE_SESSION_TARGET) * 100);
+                  const birthdayToday = isTodayBirthday(student.birthDate);
 
                   return (
-                    <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
+                    <tr
+                      key={student.id}
+                      className={`transition-colors ${
+                        birthdayToday
+                          ? 'bg-amber-50/70 hover:bg-amber-100/60 border-l-4 border-amber-300'
+                          : 'hover:bg-slate-50/50'
+                      }`}
+                    >
                       <td className="px-6 py-4">
-                        <div className="font-bold text-slate-800">{student.name}</div>
-                        <div className="text-2xs text-slate-400 font-mono mt-0.5">ID: {student.id.substring(0, 8)}</div>
+                        <div className={`inline-flex items-center px-2.5 py-1 rounded-lg border font-extrabold text-sm shadow-xs ${
+                          birthdayToday
+                            ? 'bg-amber-100 border-amber-300 text-amber-800'
+                            : 'bg-indigo-50 border-indigo-100 text-indigo-800'
+                        }`}>
+                          {student.name}
+                        </div>
+                        {birthdayToday && (
+                          <div className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-bold uppercase tracking-wider">
+                            <Cake size={11} />
+                            Sinh nhật hôm nay
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 space-y-0.5">
                         <div className="flex items-center gap-1.5 text-slate-600">
@@ -802,7 +880,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                       <select
                         value={formDayFilter}
                         onChange={(e) => setFormDayFilter(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-indigo-500 bg-white"
+                        className="tempo-select w-full px-3 py-2 rounded-lg text-xs bg-white"
                       >
                         <option value="all">Tất cả thứ ({shifts.length} ca)</option>
                         {availableDays.map((day) => (
@@ -963,7 +1041,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                 <select
                   value={historyStatusFilter}
                   onChange={(e) => setHistoryStatusFilter(e.target.value as 'all' | 'present' | 'absent_excused' | 'absent_unexcused')}
-                  className="px-3 py-2 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:border-blue-500"
+                  className="tempo-select px-3 py-2 rounded-lg text-xs bg-white"
                 >
                   <option value="all">Tất cả</option>
                   <option value="present">Có mặt</option>
@@ -1003,7 +1081,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                             <select
                               value={draft.status}
                               onChange={(e) => handleHistoryFieldChange(row.id, 'status', e.target.value)}
-                              className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:border-blue-500"
+                              className="tempo-select px-3 py-1.5 rounded-lg text-xs bg-white"
                             >
                               <option value="present">Có mặt</option>
                               <option value="absent_excused">Vắng có phép</option>

@@ -284,39 +284,88 @@ export function generateStudentTuitionSnapshotImage(data: {
   ctx.fillText('Danh sách theo chu kỳ hiện tại, tối đa 24 buổi', 50, 465);
 
   const sessionsToRender = data.sessions.slice(0, 24);
-  const rowHeight = 26;
-  let y = 500;
+  const tableX = 50;
+  const tableY = 485;
+  const tableWidth = 800;
+  const tableHeaderHeight = 34;
+  const rowHeight = 28;
+  const sttColWidth = 60;
+  const dateColWidth = 120;
+  const tableBottomLimit = 1070;
+  const maxVisibleRows = Math.max(0, Math.floor((tableBottomLimit - (tableY + tableHeaderHeight)) / rowHeight));
+  const visibleSessions = sessionsToRender.slice(0, maxVisibleRows);
 
-  ctx.font = 'bold 14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillStyle = '#0f172a';
-  ctx.fillText('STT', 50, y);
-  ctx.fillText('Ngày', 110, y);
-  ctx.fillText('Ca học', 230, y);
-
-  y += 14;
-  ctx.strokeStyle = '#e2e8f0';
+  // Table frame
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#dbe4f3';
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(50, y);
-  ctx.lineTo(850, y);
+  ctx.roundRect(tableX, tableY, tableWidth, tableHeaderHeight + Math.max(visibleSessions.length, 1) * rowHeight, 10);
+  ctx.fill();
   ctx.stroke();
 
-  ctx.font = '14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  sessionsToRender.forEach((session, idx) => {
-    y += rowHeight;
+  // Header row
+  const tableHeaderGrad = ctx.createLinearGradient(tableX, tableY, tableX + tableWidth, tableY);
+  tableHeaderGrad.addColorStop(0, '#1d4ed8');
+  tableHeaderGrad.addColorStop(1, '#4338ca');
+  ctx.fillStyle = tableHeaderGrad;
+  ctx.beginPath();
+  ctx.roundRect(tableX, tableY, tableWidth, tableHeaderHeight, 10);
+  ctx.fill();
+
+  // Header text
+  ctx.font = 'bold 13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('STT', tableX + 18, tableY + 22);
+  ctx.fillText('Ngày', tableX + sttColWidth + 18, tableY + 22);
+  ctx.fillText('Ca học', tableX + sttColWidth + dateColWidth + 18, tableY + 22);
+
+  // Vertical separators
+  const col1X = tableX + sttColWidth;
+  const col2X = tableX + sttColWidth + dateColWidth;
+  const tableBottomY = tableY + tableHeaderHeight + Math.max(visibleSessions.length, 1) * rowHeight;
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.beginPath();
+  ctx.moveTo(col1X, tableY);
+  ctx.lineTo(col1X, tableBottomY);
+  ctx.moveTo(col2X, tableY);
+  ctx.lineTo(col2X, tableBottomY);
+  ctx.stroke();
+
+  // Body rows
+  ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  visibleSessions.forEach((session, idx) => {
+    const rowTop = tableY + tableHeaderHeight + idx * rowHeight;
+    const rowCenterY = rowTop + 19;
+
     if (idx % 2 === 0) {
       ctx.fillStyle = 'rgba(99, 102, 241, 0.05)';
-      ctx.fillRect(45, y - 16, 810, 22);
+      ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, rowHeight);
     }
+
+    ctx.strokeStyle = '#eef2ff';
+    ctx.beginPath();
+    ctx.moveTo(tableX, rowTop + rowHeight);
+    ctx.lineTo(tableX + tableWidth, rowTop + rowHeight);
+    ctx.stroke();
+
     ctx.fillStyle = '#1e293b';
-    ctx.fillText(String(idx + 1), 50, y);
-    ctx.fillText(session.date.split('-').reverse().join('/'), 110, y);
-    ctx.fillText(session.shiftLabel, 230, y);
+    ctx.fillText(String(idx + 1), tableX + 18, rowCenterY);
+    ctx.fillText(session.date.split('-').reverse().join('/'), tableX + sttColWidth + 18, rowCenterY);
+    ctx.fillText(session.shiftLabel, tableX + sttColWidth + dateColWidth + 18, rowCenterY);
   });
 
-  if (sessionsToRender.length === 0) {
-    y += rowHeight;
+  if (visibleSessions.length === 0) {
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText('Chưa có buổi học có mặt nào trong chu kỳ này.', 50, y);
+    ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText('Chưa có buổi học có mặt nào trong chu kỳ này.', tableX + 18, tableY + tableHeaderHeight + 19);
+  }
+
+  if (sessionsToRender.length > visibleSessions.length) {
+    const hiddenCount = sessionsToRender.length - visibleSessions.length;
+    ctx.fillStyle = '#64748b';
+    ctx.font = '12px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText(`... còn ${hiddenCount} buổi, vui lòng xuất bản mở rộng nếu cần`, tableX + 10, tableBottomY + 18);
   }
 
   const badgeX = 640;

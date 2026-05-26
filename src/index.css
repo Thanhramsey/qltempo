@@ -1,1 +1,28 @@
 @import "tailwindcss";
+
+/* Reusable custom select style for a cleaner, modern dropdown look. */
+.tempo-select {
+	appearance: none;
+	-webkit-appearance: none;
+	-moz-appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%2364748b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.75rem center;
+	background-size: 1rem;
+	padding-right: 2.25rem;
+	border-width: 1px;
+	border-style: solid;
+	border-color: rgb(226 232 240);
+	transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.tempo-select:hover {
+	border-color: rgb(203 213 225);
+	background-color: rgb(248 250 252);
+}
+
+.tempo-select:focus {
+	outline: none;
+	border-color: rgb(99 102 241);
+	box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}

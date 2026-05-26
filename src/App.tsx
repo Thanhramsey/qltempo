@@ -24,6 +24,7 @@ import {
   Users,
   CheckSquare,
   CircleDollarSign,
+  BarChart3,
   LogOut,
   GraduationCap,
   Sparkles,
@@ -41,6 +42,7 @@ import StudentsManager from './components/StudentsManager';
 import AttendanceTracker from './components/AttendanceTracker';
 import TuitionManager from './components/TuitionManager';
 import UsersManager from './components/UsersManager';
+import ReportsManager from './components/ReportsManager';
 
 const DEMO_KEY_PREFIX = 'edutrack_demo_';
 
@@ -687,7 +689,7 @@ export default function App() {
 
   // Login Barrier Check
   if (!user && !currentUserAccount && !bypassAuth) {
-    return <AuthScreen onBypass={() => setBypassAuth(true)} onCustomLogin={handleCustomLogin} />;
+    return <AuthScreen onCustomLogin={handleCustomLogin} />;
   }
 
   // Pre-configured offline bypass session safety
@@ -697,6 +699,7 @@ export default function App() {
 
   const navItems = [
     { id: 'dashboard', label: 'Bảng Điều Khiển', icon: LayoutDashboard },
+    { id: 'reports', label: 'Báo Cáo', icon: BarChart3 },
     { id: 'shifts', label: 'Lớp & Ca Học', icon: Calendar },
     { id: 'students', label: 'Học Sinh', icon: Users },
     { id: 'attendance', label: 'Điểm Danh', icon: CheckSquare },
@@ -717,7 +720,7 @@ export default function App() {
               <GraduationCap size={22} />
             </div>
             <div>
-              <span className="font-bold text-base leading-none block">EduTrack Pro</span>
+              <span className="font-bold text-base leading-none block">Tempo</span>
               <span className="text-3xs text-indigo-400 font-semibold uppercase tracking-widest block mt-0.5">Quản lý chuyên cần</span>
             </div>
           </div>
@@ -780,7 +783,7 @@ export default function App() {
           <div className="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
             <GraduationCap size={18} />
           </div>
-          <span className="font-bold text-slate-800 text-sm">EduTrack Pro</span>
+          <span className="font-bold text-slate-800 text-sm">Tempo</span>
         </div>
 
         <button
@@ -857,9 +860,19 @@ export default function App() {
           {activeTab === 'shifts' && (
             <ShiftsManager
               shifts={shifts}
+              students={students}
               onAddShift={handleAddShift}
               onEditShift={handleEditShift}
               onDeleteShift={handleDeleteShift}
+            />
+          )}
+
+          {activeTab === 'reports' && (
+            <ReportsManager
+              students={students}
+              shifts={shifts}
+              attendances={attendances}
+              payments={payments}
             />
           )}
 

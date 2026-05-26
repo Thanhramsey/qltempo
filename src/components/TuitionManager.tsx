@@ -326,7 +326,7 @@ export default function TuitionManager({
           <select
             value={selectedCycleFilter}
             onChange={(e) => setSelectedCycleFilter(e.target.value)}
-            className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-indigo-500 font-medium h-9.5 bg-white"
+            className="tempo-select w-full px-3.5 py-2 rounded-xl text-slate-700 text-sm font-medium h-9.5 bg-white"
           >
             <option value="current">Chu kỳ hiện tại (tự động)</option>
             {Array.from({ length: maxCycleIndex }, (_, i) => i + 1).map((cycle) => (
@@ -381,7 +381,7 @@ export default function TuitionManager({
           <div className="overflow-x-auto">
             <table className="w-full min-w-[950px] text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                <tr className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 border-b border-indigo-300 text-white text-xs font-bold uppercase tracking-wider shadow-sm">
                   <th className="px-6 py-4">Học Sinh</th>
                   <th className="px-6 py-4">Chu kỳ hiện tại</th>
                   <th className="px-6 py-4">Tiến độ buổi</th>
@@ -398,11 +398,29 @@ export default function TuitionManager({
                 {tuitionRows.map((row) => {
                   const paid = row.payment ? row.payment.amountPaid : 0;
                   const debt = Math.max(COURSE_FEE_VND - paid, 0);
+                  const isPaidEnough = paid >= COURSE_FEE_VND;
+                  const isPartial = paid > 0 && paid < COURSE_FEE_VND;
+
+                  let paymentButtonClass =
+                    'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 shadow-indigo-200 border border-indigo-300';
+                  let paymentButtonLabel = 'Ghi thu';
+
+                  if (isPaidEnough) {
+                    paymentButtonClass =
+                      'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 shadow-emerald-200 border border-emerald-300';
+                    paymentButtonLabel = 'Đã đủ';
+                  } else if (isPartial) {
+                    paymentButtonClass =
+                      'bg-gradient-to-r from-amber-500 to-amber-600 text-white hover:from-amber-600 hover:to-amber-700 shadow-amber-200 border border-amber-300';
+                    paymentButtonLabel = 'Ghi thu tiếp';
+                  }
 
                   return (
                     <tr key={`${row.student.id}_${row.cycleIndex}`} className="hover:bg-slate-50/40 transition-colors">
                       <td className="px-6 py-4">
-                        <div className="font-bold text-slate-800">{row.student.name}</div>
+                        <div className="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-800 font-extrabold text-sm shadow-xs">
+                          {row.student.name}
+                        </div>
                         <div className="text-3xs text-slate-400 font-mono mt-0.5">SĐT: {row.student.phone}</div>
                       </td>
                       <td className="px-6 py-4">
@@ -433,7 +451,7 @@ export default function TuitionManager({
                         {debt.toLocaleString()} đ
                       </td>
                       <td className="px-6 py-4 text-center">
-                        {paid >= COURSE_FEE_VND ? (
+                        {isPaidEnough ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 text-2xs font-bold bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100">
                             <CheckCircle size={11} /> Đóng đủ
                           </span>
@@ -455,11 +473,13 @@ export default function TuitionManager({
                           <button
                             onClick={() => handleOpenPayment(row)}
                             disabled={row.isLocked}
-                            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all duration-200 cursor-pointer shadow-sm ${paymentButtonClass} disabled:opacity-45 disabled:grayscale disabled:cursor-not-allowed`}
                             title="Cập nhật học phí"
                           >
-                            <Edit3 size={13} />
-                            <span>Ghi thu</span>
+                            <span className="inline-flex h-4.5 w-4.5 items-center justify-center rounded-full bg-white/20">
+                              <Edit3 size={12} />
+                            </span>
+                            <span>{paymentButtonLabel}</span>
                           </button>
 
                           <button

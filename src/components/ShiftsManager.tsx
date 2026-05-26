@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Shift } from '../types';
-import { Calendar, Plus, Edit2, Trash2, Clock, BookOpen, X } from 'lucide-react';
+import { Shift, Student } from '../types';
+import { Calendar, Plus, Edit2, Trash2, Clock, BookOpen, X, Users, LayoutGrid, Table2 } from 'lucide-react';
 
 interface ShiftsManagerProps {
   shifts: Shift[];
+  students: Student[];
   onAddShift: (shift: Omit<Shift, 'id' | 'createdAt'>) => Promise<void>;
   onEditShift: (shift: Shift) => Promise<void>;
   onDeleteShift: (id: string) => Promise<void>;
@@ -37,11 +38,12 @@ function normalizeTimeFormat(raw: string): string {
     .replace(/->/g, '-');
 }
 
-export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDeleteShift }: ShiftsManagerProps) {
+export default function ShiftsManager({ shifts, students, onAddShift, onEditShift, onDeleteShift }: ShiftsManagerProps) {
   const [isOpenForm, setIsOpenForm] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [loading, setLoading] = useState(false);
   const [daySearchFilter, setDaySearchFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   // Form states
   const [time, setTime] = useState(BASE_TIME_SLOTS[2]);
@@ -79,6 +81,77 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
     const shiftDay = shift.weekday || shift.days?.[0] || '';
     return shiftDay === daySearchFilter;
   });
+
+  const sortedFilteredShifts = useMemo(() => {
+    const getStudentCount = (shiftId: string) => students.filter((st) => st.shifts?.includes(shiftId)).length;
+
+    return [...filteredShifts].sort((a, b) => {
+      const countA = getStudentCount(a.id);
+      const countB = getStudentCount(b.id);
+      if (countA !== countB) return countB - countA;
+
+      // Stable tie-breakers for consistent order when counts are equal.
+      const dayA = a.weekday || a.days?.[0] || '';
+      const dayB = b.weekday || b.days?.[0] || '';
+      if (dayA !== dayB) return dayA.localeCompare(dayB);
+
+      return a.time.localeCompare(b.time);
+    });
+  }, [filteredShifts, students]);
+
+  const dayThemeClasses: Record<string, { card: string; chip: string; icon: string; count: string }> = {
+    'Thứ 2': {
+      card: 'border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-white shadow-indigo-100/70',
+      chip: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+      icon: 'text-indigo-600',
+      count: 'text-indigo-700 bg-indigo-100/80 border-indigo-200',
+    },
+    'Thứ 3': {
+      card: 'border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-white shadow-cyan-100/70',
+      chip: 'bg-cyan-100 text-cyan-700 border-cyan-200',
+      icon: 'text-cyan-600',
+      count: 'text-cyan-700 bg-cyan-100/80 border-cyan-200',
+    },
+    'Thứ 4': {
+      card: 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-white shadow-emerald-100/70',
+      chip: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      icon: 'text-emerald-600',
+      count: 'text-emerald-700 bg-emerald-100/80 border-emerald-200',
+    },
+    'Thứ 5': {
+      card: 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-white shadow-amber-100/70',
+      chip: 'bg-amber-100 text-amber-800 border-amber-200',
+      icon: 'text-amber-600',
+      count: 'text-amber-800 bg-amber-100/80 border-amber-200',
+    },
+    'Thứ 6': {
+      card: 'border-fuchsia-200 bg-gradient-to-br from-fuchsia-50 via-white to-white shadow-fuchsia-100/70',
+      chip: 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
+      icon: 'text-fuchsia-600',
+      count: 'text-fuchsia-700 bg-fuchsia-100/80 border-fuchsia-200',
+    },
+    'Thứ 7': {
+      card: 'border-orange-200 bg-gradient-to-br from-orange-50 via-white to-white shadow-orange-100/70',
+      chip: 'bg-orange-100 text-orange-700 border-orange-200',
+      icon: 'text-orange-600',
+      count: 'text-orange-700 bg-orange-100/80 border-orange-200',
+    },
+    'Chủ Nhật': {
+      card: 'border-rose-200 bg-gradient-to-br from-rose-50 via-white to-white shadow-rose-100/70',
+      chip: 'bg-rose-100 text-rose-700 border-rose-200',
+      icon: 'text-rose-600',
+      count: 'text-rose-700 bg-rose-100/80 border-rose-200',
+    },
+  };
+
+  const getThemeByDay = (day: string) => {
+    return dayThemeClasses[day] || {
+      card: 'border-slate-200 bg-white shadow-slate-100/60',
+      chip: 'bg-slate-100 text-slate-700 border-slate-200',
+      icon: 'text-slate-500',
+      count: 'text-slate-700 bg-slate-100 border-slate-200',
+    };
+  };
 
   const handleOpenAdd = () => {
     setEditingShift(null);
@@ -195,23 +268,55 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
         </button>
       </div>
 
-      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-          Tìm ca học theo thứ
-        </label>
-        <select
-          value={daySearchFilter}
-          onChange={(e) => setDaySearchFilter(e.target.value)}
-          className="w-full md:w-72 px-3.5 py-2 border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-indigo-500 font-medium bg-white"
-        >
-          <option value="all">Tất cả thứ ({shifts.length} ca)</option>
-          {VIETNAMESE_DAYS.map((day) => {
-            const count = shifts.filter((shift) => (shift.weekday || shift.days?.[0] || '') === day).length;
-            return (
-              <option key={day} value={day}>{day} ({count} ca)</option>
-            );
-          })}
-        </select>
+      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+            Tìm ca học theo thứ
+          </label>
+          <select
+            value={daySearchFilter}
+            onChange={(e) => setDaySearchFilter(e.target.value)}
+            className="tempo-select w-full md:w-72 px-3.5 py-2 rounded-xl text-slate-700 text-sm font-medium bg-white"
+          >
+            <option value="all">Tất cả thứ ({shifts.length} ca)</option>
+            {VIETNAMESE_DAYS.map((day) => {
+              const count = shifts.filter((shift) => (shift.weekday || shift.days?.[0] || '') === day).length;
+              return (
+                <option key={day} value={day}>{day} ({count} ca)</option>
+              );
+            })}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Kiểu hiển thị</span>
+          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode('cards')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                viewMode === 'cards'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-600 hover:bg-white'
+              }`}
+            >
+              <LayoutGrid size={13} />
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-slate-600 hover:bg-white'
+              }`}
+            >
+              <Table2 size={13} />
+              Bảng
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Grid of Shifts */}
@@ -231,16 +336,22 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
             Thử đổi bộ lọc sang thứ khác hoặc chọn "Tất cả thứ" để xem toàn bộ.
           </p>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredShifts.map((shift) => (
+      ) : viewMode === 'cards' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {sortedFilteredShifts.map((shift) => {
+            const shiftDay = shift.weekday || shift.days?.[0] || 'Khác';
+            const theme = getThemeByDay(shiftDay);
+            const studentsInShift = students.filter((st) => st.shifts?.includes(shift.id));
+            const activeStudentsInShift = studentsInShift.filter((st) => st.status === 'active');
+
+            return (
             <div
               key={shift.id}
-              className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between"
+              className={`rounded-2xl p-5 border shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between min-h-[240px] ${theme.card}`}
             >
               <div>
                 <div className="flex justify-between items-start mb-4">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${theme.chip}`}>
                     {shift.course}
                   </span>
                   <div className="flex items-center gap-1">
@@ -265,26 +376,100 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
 
                 <div className="space-y-2 text-sm text-slate-600 my-4">
                   <div className="flex items-center gap-2">
-                    <Clock size={16} className="text-slate-400 shrink-0" />
+                    <Clock size={16} className={`${theme.icon} shrink-0`} />
                     <span>Lịch học: <strong className="text-slate-700 font-semibold">{shift.time}</strong></span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Calendar size={16} className="text-slate-400 shrink-0" />
+                    <Calendar size={16} className={`${theme.icon} shrink-0`} />
                     <span className="flex items-center gap-1">
                       Thứ học:
-                      <span className="px-1.5 py-0.5 bg-slate-100 rounded text-xs text-slate-600 font-medium">
-                        {shift.weekday || shift.days?.[0] || 'Chưa chọn'}
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-semibold border ${theme.chip}`}>
+                        {shiftDay}
                       </span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Users size={16} className={`${theme.icon} shrink-0`} />
+                    <span className="text-slate-700">
+                      Sĩ số ca: <strong>{studentsInShift.length}</strong> học sinh
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="border-t border-slate-50 pt-3 mt-4 text-slate-400 text-2xs">
-                Mã ca học: {shift.id.substring(0, 8)}
+              <div className="border-t border-white/60 pt-3 mt-4 flex items-center justify-end gap-2 text-2xs">
+                <span className={`px-2 py-0.5 rounded-md border text-[10px] font-bold ${theme.count}`}>
+                  Đang học: {activeStudentsInShift.length}
+                </span>
               </div>
             </div>
-          ))}
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[950px] text-left border-collapse">
+              <thead>
+                <tr className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 border-b border-indigo-300 text-white text-xs font-bold uppercase tracking-wider">
+                  <th className="px-6 py-4">Ca học</th>
+                  <th className="px-6 py-4">Môn học</th>
+                  <th className="px-6 py-4">Thứ</th>
+                  <th className="px-6 py-4">Khung giờ</th>
+                  <th className="px-6 py-4 text-right">Sĩ số</th>
+                  <th className="px-6 py-4 text-right">Đang học</th>
+                  <th className="px-6 py-4 text-right">Tác vụ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
+                {sortedFilteredShifts.map((shift) => {
+                  const shiftDay = shift.weekday || shift.days?.[0] || 'Khác';
+                  const theme = getThemeByDay(shiftDay);
+                  const studentsInShift = students.filter((st) => st.shifts?.includes(shift.id));
+                  const activeStudentsInShift = studentsInShift.filter((st) => st.status === 'active');
+
+                  return (
+                    <tr key={shift.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-slate-800">{shift.name}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${theme.chip}`}>
+                          {shift.course}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-slate-700">{shiftDay}</td>
+                      <td className="px-6 py-4 font-mono text-xs text-slate-700">{shift.time}</td>
+                      <td className="px-6 py-4 text-right font-semibold">{studentsInShift.length}</td>
+                      <td className="px-6 py-4 text-right">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold border ${theme.count}`}>
+                          {activeStudentsInShift.length}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEdit(shift)}
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            title="Sửa"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(shift.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            title="Xóa"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -326,7 +511,7 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
                   <select
                     value={selectedDay}
                     onChange={(e) => setSelectedDay(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500 font-medium bg-white"
+                    className="tempo-select w-full px-3.5 py-2 rounded-xl text-slate-800 text-sm font-medium bg-white"
                   >
                     {VIETNAMESE_DAYS.map((day) => (
                       <option key={day} value={day}>{day}</option>

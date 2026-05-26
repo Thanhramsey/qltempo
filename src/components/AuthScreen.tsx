@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { auth, googleProvider } from '../firebase';
-import { signInWithPopup, signInAnonymously } from 'firebase/auth';
-import { GraduationCap, LogIn, Users, Zap, ShieldAlert, Mail, Lock, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { signInWithPopup } from 'firebase/auth';
+import { GraduationCap, LogIn, ShieldAlert, Mail, Lock, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { UserAccount } from '../types';
 
 interface AuthScreenProps {
-  onBypass: () => void;
   onCustomLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string; userAccount?: UserAccount }>;
 }
 
-export default function AuthScreen({ onBypass, onCustomLogin }: AuthScreenProps) {
+export default function AuthScreen({ onCustomLogin }: AuthScreenProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -62,20 +61,6 @@ export default function AuthScreen({ onBypass, onCustomLogin }: AuthScreenProps)
     }
   };
 
-  const handleDemoMode = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await signInAnonymously(auth);
-      console.log("Signed in anonymously:", result.user.uid);
-    } catch (err: any) {
-      console.error("Anonymous authentication failed:", err);
-      onBypass(); // Fallback straight to localStorage offline mode
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -85,7 +70,7 @@ export default function AuthScreen({ onBypass, onCustomLogin }: AuthScreenProps)
           </div>
         </div>
         <h2 className="mt-5 text-center text-3xl font-extrabold tracking-tight text-slate-950 font-sans">
-          EduTrack Pro
+          Tempo
         </h2>
         <p className="mt-2 text-center text-xs text-slate-500 max-w">
           Hệ thống quản lý học sinh, ca học, điểm danh & học phí toàn diện
@@ -199,27 +184,6 @@ export default function AuthScreen({ onBypass, onCustomLogin }: AuthScreenProps)
               </svg>
               <span>Đăng nhập qua Gmail bằng Google</span>
             </button>
-
-            {/* Trực tiếp Trực tuyến / Demo / Bypass */}
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <button
-                onClick={handleDemoMode}
-                disabled={loading}
-                className="flex items-center justify-center gap-1 px-2.5 h-10 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-3xs font-bold transition-all duration-150 cursor-pointer"
-                title="Đăng nhập trực tuyến nặc danh nếu tên miền chưa đăng ký Google Sign-In"
-              >
-                <span>Chế độ trực tuyến ẩn danh</span>
-              </button>
-
-              <button
-                onClick={onBypass}
-                disabled={loading}
-                className="flex items-center justify-center gap-1 px-2.5 h-10 border border-dashed border-slate-200 hover:border-slate-300 text-slate-500 hover:text-slate-700 rounded-xl text-3xs font-bold bg-transparent transition-all duration-150 cursor-pointer"
-              >
-                <Zap size={10} />
-                <span>Thử nghiệm ngoại tuyến</span>
-              </button>
-            </div>
           </div>
 
           {/* Quick guide accounts reference block for easy testing */}

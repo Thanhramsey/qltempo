@@ -293,7 +293,7 @@ export default function AttendanceTracker({
             value={selectedShiftId}
             onChange={(e) => setSelectedShiftId(e.target.value)}
             disabled={dayShifts.length === 0}
-            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-slate-800 font-bold focus:outline-none focus:border-indigo-500 bg-white cursor-pointer"
+            className="tempo-select w-full px-4 py-2.5 rounded-xl text-slate-800 font-bold bg-white cursor-pointer disabled:opacity-60"
           >
             <option value="" disabled>
               {dayShifts.length === 0 ? '--- Không có ca học cho ngày này ---' : '--- Vui lòng chọn ca học ---'}
@@ -375,7 +375,7 @@ export default function AttendanceTracker({
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[700px] text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-50/70 border-b border-slate-100 text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                    <tr className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 border-b border-indigo-300 text-white text-xs font-bold uppercase tracking-wider shadow-sm">
                       <th className="px-6 py-4">Tên học sinh</th>
                       <th className="px-6 py-4">Số điện thoại</th>
                       <th className="px-6 py-4 text-center print:hidden">Có mặt</th>
@@ -391,8 +391,9 @@ export default function AttendanceTracker({
                       return (
                         <tr key={st.id} className="hover:bg-slate-50/20 transition-colors">
                           <td className="px-6 py-3.5">
-                            <span className="font-semibold text-slate-800 block">{st.name}</span>
-                            <span className="text-3xs text-slate-400 font-mono block">ID: {st.id.substring(0, 8)}</span>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-800 font-extrabold text-sm shadow-xs">
+                              {st.name}
+                            </span>
                           </td>
                           <td className="px-6 py-3.5 font-mono text-slate-600 font-medium">
                             {st.phone}
