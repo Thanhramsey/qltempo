@@ -414,7 +414,57 @@ export default function App() {
     }
   };
 
-  const handleDeleteShift = async (id: string) => {
+  const handleDeleteShift = async (
+    id: string,
+    strategy?: { mode: 'move_students'; targetShiftId: string } | { mode: 'remove_link' }
+  ) => {
+    const impactedStudents = students.filter((st) => st.shifts?.includes(id));
+
+    if (impactedStudents.length > 0) {
+      if (!strategy) {
+        throw new Error('Shift has assigned students and requires a delete strategy.');
+      }
+
+      const updatedStudents: Student[] = impactedStudents.map((student) => {
+        if (strategy.mode === 'move_students') {
+          const nextShifts = student.shifts.map((shiftId) =>
+            shiftId === id ? strategy.targetShiftId : shiftId
+          );
+
+          // Avoid duplicate shift IDs when target shift already exists on student.
+          const uniqueShifts = Array.from(new Set(nextShifts));
+          return {
+            ...student,
+            shifts: uniqueShifts,
+          };
+        }
+
+        return {
+          ...student,
+          shifts: student.shifts.filter((shiftId) => shiftId !== id),
+        };
+      });
+
+      if (isOnline) {
+        for (const student of updatedStudents) {
+          const path = `students/${student.id}`;
+          try {
+            await setDoc(doc(db, 'students', student.id), student);
+          } catch (err) {
+            handleFirestoreError(err, OperationType.WRITE, path);
+            throw err;
+          }
+        }
+      } else {
+        const updatedAllStudents = students.map((student) => {
+          const found = updatedStudents.find((s) => s.id === student.id);
+          return found || student;
+        });
+        setStudents(updatedAllStudents);
+        localStorage.setItem(`${DEMO_KEY_PREFIX}students`, JSON.stringify(updatedAllStudents));
+      }
+    }
+
     if (isOnline) {
       const path = `shifts/${id}`;
       try {

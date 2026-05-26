@@ -1,13 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { Shift, Student } from '../types';
 import { Calendar, Plus, Edit2, Trash2, Clock, BookOpen, X, Users, LayoutGrid, Table2 } from 'lucide-react';
+import ToastMessage, { ToastType } from './ui/ToastMessage';
+import ConfirmDialog from './ui/ConfirmDialog';
 
 interface ShiftsManagerProps {
   shifts: Shift[];
   students: Student[];
   onAddShift: (shift: Omit<Shift, 'id' | 'createdAt'>) => Promise<void>;
   onEditShift: (shift: Shift) => Promise<void>;
-  onDeleteShift: (id: string) => Promise<void>;
+  onDeleteShift: (
+    id: string,
+    strategy?: { mode: 'move_students'; targetShiftId: string } | { mode: 'remove_link' }
+  ) => Promise<void>;
 }
 
 const VIETNAMESE_DAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"];
@@ -42,8 +47,16 @@ export default function ShiftsManager({ shifts, students, onAddShift, onEditShif
   const [isOpenForm, setIsOpenForm] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [daySearchFilter, setDaySearchFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [deleteContext, setDeleteContext] = useState<{ shift: Shift; studentsInShift: Student[] } | null>(null);
+  const [deleteMode, setDeleteMode] = useState<'move_students' | 'remove_link'>('move_students');
+  const [targetShiftId, setTargetShiftId] = useState('');
+  const [quickDeleteShift, setQuickDeleteShift] = useState<Shift | null>(null);
+  const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
+
+  const showToast = (type: ToastType, message: string) => setToast({ type, message });
 
   // Form states
   const [time, setTime] = useState(BASE_TIME_SLOTS[2]);
@@ -166,12 +179,12 @@ export default function ShiftsManager({ shifts, students, onAddShift, onEditShif
     const timePattern = /^([01]?\d|2[0-3])h[0-5]\d-([01]?\d|2[0-3])h[0-5]\d$/;
 
     if (!timePattern.test(normalizedTime)) {
-      alert('Định dạng giờ chưa đúng. Ví dụ hợp lệ: 10h30-12h00');
+      showToast('warning', 'Định dạng giờ chưa đúng. Ví dụ hợp lệ: 10h30-12h00');
       return;
     }
 
     if (presetTimeSlots.includes(normalizedTime)) {
-      alert('Khung giờ này đã có trong danh sách chọn nhanh.');
+      showToast('info', 'Khung giờ này đã có trong danh sách chọn nhanh.');
       setTime(normalizedTime);
       return;
     }
@@ -180,7 +193,7 @@ export default function ShiftsManager({ shifts, students, onAddShift, onEditShif
     setCustomTimeSlots(updated);
     localStorage.setItem(CUSTOM_TIME_SLOTS_KEY, JSON.stringify(updated));
     setTime(normalizedTime);
-    alert('Đã thêm khung giờ mới vào danh sách chọn nhanh.');
+    showToast('success', 'Đã thêm khung giờ mới vào danh sách chọn nhanh.');
   };
 
   const handleOpenEdit = (shift: Shift) => {
@@ -194,7 +207,7 @@ export default function ShiftsManager({ shifts, students, onAddShift, onEditShif
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!course.trim() || !selectedDay.trim() || !time.trim()) {
-      alert("Vui lòng nhập đầy đủ Thứ học, thời gian ca và Môn học!");
+      showToast('warning', 'Vui lòng nhập đầy đủ Thứ học, thời gian ca và Môn học!');
       return;
     }
 
@@ -203,7 +216,7 @@ export default function ShiftsManager({ shifts, students, onAddShift, onEditShif
 
     const conflictCount = getShiftCountForSlot(selectedDay, normalizedTime, editingShift?.id);
     if (conflictCount > 0) {
-      alert('Không thể lưu: đã tồn tại ca học trùng chính xác Thứ + Khung giờ.');
+      showToast('error', 'Không thể lưu: đã tồn tại ca học trùng chính xác Thứ + Khung giờ.');
       return;
     }
 
@@ -228,27 +241,75 @@ export default function ShiftsManager({ shifts, students, onAddShift, onEditShif
         });
       }
       setIsOpenForm(false);
+      showToast('success', editingShift ? 'Đã cập nhật ca học thành công.' : 'Đã tạo ca học mới thành công.');
     } catch (err) {
       console.error(err);
-      alert("Gặp lỗi khi lưu ca học!");
+      showToast('error', 'Gặp lỗi khi lưu ca học!');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm("Bạn có chắc chắn muốn xóa ca học này? Học sinh thuộc ca này vẫn giữ nguyên thông tin nhưng sẽ không xuất hiện trong danh sách ca điểm danh.")) {
-      try {
-        await onDeleteShift(id);
-      } catch (err) {
-        console.error(err);
-        alert("Gặp lỗi khi xóa ca học!");
+  const handleDelete = async (shift: Shift) => {
+    const studentsInShift = students.filter((st) => st.shifts?.includes(shift.id));
+
+    if (studentsInShift.length === 0) {
+      setQuickDeleteShift(shift);
+      return;
+    }
+
+    const fallbackTarget = shifts.find((sh) => sh.id !== shift.id);
+    setDeleteMode(fallbackTarget ? 'move_students' : 'remove_link');
+    setTargetShiftId(fallbackTarget?.id || '');
+    setDeleteContext({ shift, studentsInShift });
+  };
+
+  const handleConfirmDeleteWithStrategy = async () => {
+    if (!deleteContext) return;
+    if (deleteMode === 'move_students' && !targetShiftId) {
+      showToast('warning', 'Vui lòng chọn ca đích để chuyển học sinh trước khi xóa.');
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      if (deleteMode === 'move_students') {
+        await onDeleteShift(deleteContext.shift.id, {
+          mode: 'move_students',
+          targetShiftId,
+        });
+      } else {
+        await onDeleteShift(deleteContext.shift.id, { mode: 'remove_link' });
       }
+      setDeleteContext(null);
+      showToast('success', 'Đã xóa ca học và xử lý học sinh liên quan thành công.');
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Không thể xóa ca học. Vui lòng thử lại.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleQuickDeleteConfirm = async () => {
+    if (!quickDeleteShift) return;
+    setDeleteLoading(true);
+    try {
+      await onDeleteShift(quickDeleteShift.id);
+      showToast('success', 'Đã xóa ca học thành công.');
+      setQuickDeleteShift(null);
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Gặp lỗi khi xóa ca học!');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
   return (
     <div className="space-y-6">
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm leading-none">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -363,7 +424,7 @@ export default function ShiftsManager({ shifts, students, onAddShift, onEditShif
                       <Edit2 size={15} />
                     </button>
                     <button
-                      onClick={() => handleDelete(shift.id)}
+                      onClick={() => handleDelete(shift)}
                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
                       title="Xóa"
                     >
@@ -456,7 +517,7 @@ export default function ShiftsManager({ shifts, students, onAddShift, onEditShif
                             <Edit2 size={15} />
                           </button>
                           <button
-                            onClick={() => handleDelete(shift.id)}
+                            onClick={() => handleDelete(shift)}
                             className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                             title="Xóa"
                           >
@@ -614,6 +675,109 @@ export default function ShiftsManager({ shifts, students, onAddShift, onEditShif
           </div>
         </div>
       )}
+
+      {deleteContext && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-800">Xóa ca học an toàn</h3>
+              <button
+                onClick={() => setDeleteContext(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                disabled={deleteLoading}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Ca <strong>{deleteContext.shift.name}</strong> đang có <strong>{deleteContext.studentsInShift.length}</strong> học sinh.
+                Bạn cần chọn cách xử lý trước khi xóa.
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    className="mt-1"
+                    checked={deleteMode === 'move_students'}
+                    onChange={() => setDeleteMode('move_students')}
+                    disabled={!shifts.some((sh) => sh.id !== deleteContext.shift.id)}
+                  />
+                  <span className="text-sm text-slate-700">
+                    <strong>Chuyển toàn bộ học sinh sang ca khác</strong>
+                  </span>
+                </label>
+
+                <div>
+                  <select
+                    value={targetShiftId}
+                    onChange={(e) => setTargetShiftId(e.target.value)}
+                    disabled={deleteMode !== 'move_students'}
+                    className="tempo-select w-full px-3.5 py-2 rounded-xl text-slate-800 text-sm font-medium bg-white disabled:opacity-60"
+                  >
+                    <option value="">--- Chọn ca đích ---</option>
+                    {shifts
+                      .filter((sh) => sh.id !== deleteContext.shift.id)
+                      .map((sh) => (
+                        <option key={sh.id} value={sh.id}>
+                          {sh.name} - {sh.course} ({sh.weekday || sh.days?.[0] || 'N/A'} {sh.time})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    className="mt-1"
+                    checked={deleteMode === 'remove_link'}
+                    onChange={() => setDeleteMode('remove_link')}
+                  />
+                  <span className="text-sm text-slate-700">
+                    <strong>Gỡ ca này khỏi học sinh</strong> (học sinh vẫn giữ nguyên hồ sơ)
+                  </span>
+                </label>
+              </div>
+
+              <div className="text-xs text-slate-500 border-t border-slate-100 pt-3">
+                Dữ liệu học sinh bị ảnh hưởng: {deleteContext.studentsInShift.length} hồ sơ.
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setDeleteContext(null)}
+                  disabled={deleteLoading}
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 cursor-pointer disabled:opacity-60"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteWithStrategy}
+                  disabled={deleteLoading || (deleteMode === 'move_students' && !targetShiftId)}
+                  className="px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-sm font-semibold hover:bg-rose-100 cursor-pointer disabled:opacity-60"
+                >
+                  {deleteLoading ? 'Đang xóa...' : 'Xác nhận xóa ca học'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={!!quickDeleteShift}
+        title="Xác nhận xóa ca học"
+        message={quickDeleteShift ? `Bạn có chắc chắn muốn xóa ca "${quickDeleteShift.name}"?` : ''}
+        confirmText="Xóa ca"
+        destructive
+        loading={deleteLoading}
+        onClose={() => setQuickDeleteShift(null)}
+        onConfirm={handleQuickDeleteConfirm}
+      />
     </div>
   );
 }

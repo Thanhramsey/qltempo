@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { UserAccount } from '../types';
 import { Users, UserPlus, Shield, Trash2, Lock, Mail, User, Sparkles, X, Key, ShieldCheck } from 'lucide-react';
+import ToastMessage, { ToastType } from './ui/ToastMessage';
+import ConfirmDialog from './ui/ConfirmDialog';
 
 interface UsersManagerProps {
   users: UserAccount[];
@@ -21,6 +23,10 @@ export default function UsersManager({
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<UserAccount | null>(null);
+
+  const showToast = (type: ToastType, message: string) => setToast({ type, message });
 
   // Form states
   const [name, setName] = useState('');
@@ -86,6 +92,7 @@ export default function UsersManager({
         });
       }
       setIsOpenForm(false);
+      showToast('success', editingUser ? 'Đã cập nhật tài khoản thành công.' : 'Đã thêm tài khoản mới thành công.');
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Có lỗi xảy ra khi lưu thay đổi.");
@@ -96,22 +103,30 @@ export default function UsersManager({
 
   const handleDelete = async (user: UserAccount) => {
     if (currentUserAccount && currentUserAccount.id === user.id) {
-      alert("Bạn không thể tự xóa tài khoản của chính mình!");
+      showToast('warning', 'Bạn không thể tự xóa tài khoản của chính mình!');
       return;
     }
 
-    if (confirm(`Bạn có chắc chắn muốn xóa tài khoản "${user.name}" (${user.email}) khỏi hệ thống?`)) {
-      try {
-        await onDeleteUser(user.id);
-      } catch (err: any) {
-        console.error(err);
-        alert("Gặp lỗi khi xóa tài khoản: " + (err?.message || ""));
-      }
+    setPendingDeleteUser(user);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteUser) return;
+
+    try {
+      await onDeleteUser(pendingDeleteUser.id);
+      showToast('success', `Đã xóa tài khoản "${pendingDeleteUser.name}".`);
+      setPendingDeleteUser(null);
+    } catch (err: any) {
+      console.error(err);
+      showToast('error', `Gặp lỗi khi xóa tài khoản: ${err?.message || ''}`.trim());
     }
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -335,6 +350,16 @@ export default function UsersManager({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingDeleteUser}
+        title="Xác nhận xóa tài khoản"
+        message={pendingDeleteUser ? `Bạn có chắc chắn muốn xóa tài khoản "${pendingDeleteUser.name}" (${pendingDeleteUser.email}) khỏi hệ thống?` : ''}
+        confirmText="Xóa tài khoản"
+        destructive
+        onClose={() => setPendingDeleteUser(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }

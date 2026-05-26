@@ -3,6 +3,7 @@ import { Shift, Student, Payment, PaymentStatus, Attendance } from '../types';
 import { CircleDollarSign, Edit3, Image, Download, Search, CheckCircle, AlertTriangle, Coins, X, Loader2 } from 'lucide-react';
 import { exportToCSV } from '../utils/csvExport';
 import { downloadStudentTuitionSnapshotImage, generateStudentTuitionSnapshotImage } from '../utils/canvasReceipt';
+import ToastMessage, { ToastType } from './ui/ToastMessage';
 import {
   COURSE_FEE_VND,
   COURSE_SESSION_TARGET,
@@ -54,6 +55,9 @@ export default function TuitionManager({
   const [previewImageUrl, setPreviewImageUrl] = useState<string>('');
   const [previewFileName, setPreviewFileName] = useState<string>('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
+
+  const showToast = (type: ToastType, message: string) => setToast({ type, message });
 
   const maxCycleIndex = useMemo(() => {
     let maxFromProgress = 1;
@@ -109,7 +113,7 @@ export default function TuitionManager({
 
   const handleOpenPayment = (row: TuitionRow) => {
     if (row.isLocked) {
-      alert('Chu kỳ này đã khóa tự động sau khi đủ 24/24 buổi. Không thể ghi thu thêm.');
+      showToast('warning', 'Chu kỳ này đã khóa tự động sau khi đủ 24/24 buổi. Không thể ghi thu thêm.');
       return;
     }
 
@@ -155,10 +159,10 @@ export default function TuitionManager({
       });
 
       setIsModalOpen(false);
-      alert('Đã cập nhật học phí theo chu kỳ buổi học thành công!');
+      showToast('success', 'Đã cập nhật học phí theo chu kỳ buổi học thành công!');
     } catch (err) {
       console.error(err);
-      alert('Không thể lưu học phí. Vui lòng kiểm tra lại.');
+      showToast('error', 'Không thể lưu học phí. Vui lòng kiểm tra lại.');
     } finally {
       setSaving(false);
     }
@@ -278,6 +282,8 @@ export default function TuitionManager({
 
   return (
     <div className="space-y-6">
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
       <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">

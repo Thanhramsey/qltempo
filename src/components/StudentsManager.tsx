@@ -32,6 +32,8 @@ import { exportStudentsList } from '../utils/csvExport';
 import { COURSE_SESSION_TARGET, getStudentCycleProgress } from '../utils/tuitionCycle';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import ToastMessage, { ToastType } from './ui/ToastMessage';
+import ConfirmDialog from './ui/ConfirmDialog';
 
 interface StudentsManagerProps {
   students: Student[];
@@ -169,6 +171,10 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
   const [historySaving, setHistorySaving] = useState(false);
   const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'present' | 'absent_excused' | 'absent_unexcused'>('all');
   const [historyDrafts, setHistoryDrafts] = useState<Record<string, { status: HistoryAttendanceStatus; note: string }>>({});
+  const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
+  const [pendingDeleteStudent, setPendingDeleteStudent] = useState<Student | null>(null);
+
+  const showToast = (type: ToastType, message: string) => setToast({ type, message });
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -300,7 +306,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || selectedShifts.length === 0) {
-      alert("Vui lòng điền họ tên và chọn ít nhất 1 ca học!");
+      showToast('warning', 'Vui lòng điền họ tên và chọn ít nhất 1 ca học!');
       return;
     }
 
@@ -329,22 +335,29 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
         });
       }
       setIsOpenForm(false);
+      showToast('success', editingStudent ? 'Đã cập nhật thông tin học sinh.' : 'Đã thêm học sinh mới thành công.');
     } catch (err) {
       console.error(err);
-      alert("Gặp lỗi khi lưu thông tin học sinh!");
+      showToast('error', 'Gặp lỗi khi lưu thông tin học sinh!');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm("Bạn có chắc muốn xóa học sinh này hoàn toàn khỏi hệ thống?")) {
-      try {
-        await onDeleteStudent(id);
-      } catch (err) {
-        console.error(err);
-        alert("Gặp lỗi khi xóa học sinh!");
-      }
+  const handleDelete = (id: string) => {
+    const found = students.find((st) => st.id === id) || null;
+    setPendingDeleteStudent(found);
+  };
+
+  const handleConfirmDeleteStudent = async () => {
+    if (!pendingDeleteStudent) return;
+    try {
+      await onDeleteStudent(pendingDeleteStudent.id);
+      showToast('success', `Đã xóa học sinh ${pendingDeleteStudent.name}.`);
+      setPendingDeleteStudent(null);
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Gặp lỗi khi xóa học sinh!');
     }
   };
 
@@ -463,7 +476,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       .map((att) => att.id);
 
     if (changedRecords.length === 0 && deletedIds.length === 0) {
-      alert('Không có thay đổi nào để lưu.');
+      showToast('info', 'Không có thay đổi nào để lưu.');
       return;
     }
 
@@ -475,10 +488,10 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       if (deletedIds.length > 0) {
         await onDeleteAttendance(deletedIds);
       }
-      alert(`Đã cập nhật ${changedRecords.length} bản ghi và xóa ${deletedIds.length} bản ghi về chưa điểm danh.`);
+      showToast('success', `Đã cập nhật ${changedRecords.length} bản ghi và xóa ${deletedIds.length} bản ghi về chưa điểm danh.`);
     } catch (err) {
       console.error(err);
-      alert('Không thể cập nhật lịch sử điểm danh. Vui lòng thử lại.');
+      showToast('error', 'Không thể cập nhật lịch sử điểm danh. Vui lòng thử lại.');
     } finally {
       setHistorySaving(false);
     }
@@ -486,6 +499,8 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
 
   return (
     <div className="space-y-6">
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
       {/* Roster actions */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm gap-4">
         <div>
@@ -1143,6 +1158,16 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingDeleteStudent}
+        title="Xác nhận xóa học sinh"
+        message={pendingDeleteStudent ? `Bạn có chắc muốn xóa học sinh "${pendingDeleteStudent.name}" hoàn toàn khỏi hệ thống?` : ''}
+        confirmText="Xóa học sinh"
+        destructive
+        onClose={() => setPendingDeleteStudent(null)}
+        onConfirm={handleConfirmDeleteStudent}
+      />
     </div>
   );
 }
