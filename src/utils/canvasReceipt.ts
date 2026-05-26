@@ -193,3 +193,187 @@ export function exportReceiptImage(data: {
   link.click();
   document.body.removeChild(link);
 }
+
+export function generateStudentTuitionSnapshotImage(data: {
+  studentName: string;
+  phone: string;
+  cycleIndex: number;
+  sessionsTarget: number;
+  currentCycleSessions: number;
+  totalPresentSessions: number;
+  totalAmount: number;
+  amountPaid: number;
+  paymentDate: string;
+  status: string;
+  note: string;
+  sessions: Array<{ date: string; shiftLabel: string }>;
+}): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = 900;
+  canvas.height = 1200;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  const bg = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  bg.addColorStop(0, '#f8fafc');
+  bg.addColorStop(1, '#eef2ff');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = 'rgba(99, 102, 241, 0.08)';
+  ctx.beginPath();
+  ctx.arc(770, 120, 220, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.1)';
+  ctx.beginPath();
+  ctx.arc(120, 1100, 260, 0, Math.PI * 2);
+  ctx.fill();
+
+  const head = ctx.createLinearGradient(0, 0, canvas.width, 0);
+  head.addColorStop(0, '#1d4ed8');
+  head.addColorStop(1, '#4338ca');
+  ctx.fillStyle = head;
+  ctx.fillRect(0, 0, canvas.width, 130);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 32px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText('BÁO CÁO BUỔI HỌC + HỌC PHÍ', 40, 72);
+  ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = '#dbeafe';
+  ctx.fillText(`Ngày xuất: ${new Date().toISOString().slice(0, 10).split('-').reverse().join('/')}`, 40, 100);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = 2;
+  ctx.fillRect(30, 145, 840, 230);
+  ctx.strokeRect(30, 145, 840, 230);
+
+  ctx.fillStyle = '#1e3a8a';
+  ctx.font = 'bold 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText('THÔNG TIN HỌC SINH', 50, 185);
+
+  ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = '#0f172a';
+  ctx.fillText(`Họ tên: ${data.studentName}`, 50, 225);
+  ctx.fillText(`SĐT: ${data.phone || '---'}`, 50, 255);
+  ctx.fillText(`Chu kỳ hiện tại: ${data.cycleIndex}`, 50, 285);
+  ctx.fillText(
+    `Tiến độ chu kỳ: ${data.currentCycleSessions}/${data.sessionsTarget} buổi (Tổng đã học: ${data.totalPresentSessions} buổi)`,
+    50,
+    315
+  );
+
+  const debt = Math.max(data.totalAmount - data.amountPaid, 0);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillText(`Học phí chu kỳ: ${data.totalAmount.toLocaleString()} đ`, 50, 345);
+  ctx.fillStyle = debt === 0 ? '#059669' : '#b45309';
+  ctx.fillText(`Đã đóng: ${data.amountPaid.toLocaleString()} đ | Còn nợ: ${debt.toLocaleString()} đ`, 430, 345);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.fillRect(30, 400, 840, 760);
+  ctx.strokeRect(30, 400, 840, 760);
+
+  ctx.fillStyle = '#1e3a8a';
+  ctx.font = 'bold 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText('CÁC BUỔI ĐÃ HỌC (CÓ MẶT)', 50, 440);
+
+  ctx.font = '14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('Danh sách theo chu kỳ hiện tại, tối đa 24 buổi', 50, 465);
+
+  const sessionsToRender = data.sessions.slice(0, 24);
+  const rowHeight = 26;
+  let y = 500;
+
+  ctx.font = 'bold 14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = '#0f172a';
+  ctx.fillText('STT', 50, y);
+  ctx.fillText('Ngày', 110, y);
+  ctx.fillText('Ca học', 230, y);
+
+  y += 14;
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.beginPath();
+  ctx.moveTo(50, y);
+  ctx.lineTo(850, y);
+  ctx.stroke();
+
+  ctx.font = '14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  sessionsToRender.forEach((session, idx) => {
+    y += rowHeight;
+    if (idx % 2 === 0) {
+      ctx.fillStyle = 'rgba(99, 102, 241, 0.05)';
+      ctx.fillRect(45, y - 16, 810, 22);
+    }
+    ctx.fillStyle = '#1e293b';
+    ctx.fillText(String(idx + 1), 50, y);
+    ctx.fillText(session.date.split('-').reverse().join('/'), 110, y);
+    ctx.fillText(session.shiftLabel, 230, y);
+  });
+
+  if (sessionsToRender.length === 0) {
+    y += rowHeight;
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('Chưa có buổi học có mặt nào trong chu kỳ này.', 50, y);
+  }
+
+  const badgeX = 640;
+  const badgeY = 1110;
+  const paidEnough = debt === 0;
+  ctx.fillStyle = paidEnough ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.18)';
+  ctx.strokeStyle = paidEnough ? '#10b981' : '#f59e0b';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(badgeX, badgeY - 25, 200, 36, 10);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = paidEnough ? '#065f46' : '#92400e';
+  ctx.font = 'bold 13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText(paidEnough ? 'TRẠNG THÁI: ĐÃ ĐỦ' : 'TRẠNG THÁI: CHƯA ĐỦ', badgeX + 12, badgeY - 2);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText(`Trạng thái học phí: ${data.status}`, 50, 1120);
+  ctx.fillText(`Ngày đóng: ${data.paymentDate ? data.paymentDate.split('-').reverse().join('/') : '---'}`, 290, 1120);
+  ctx.fillText(`Ghi chú: ${data.note || '---'}`, 50, 1145);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText('Trung tâm Piano - Học tập đều đặn, tiến bộ mỗi ngày', canvas.width / 2, 1175);
+
+  const dataURL = canvas.toDataURL('image/png');
+  return dataURL;
+}
+
+export function downloadStudentTuitionSnapshotImage(dataUrl: string, fileName: string) {
+  if (!dataUrl) return;
+  const link = document.createElement('a');
+  link.download = fileName;
+  link.href = dataUrl;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Backward-compat export for stale HMR modules still importing the old function name.
+export function exportStudentTuitionSnapshot(data: {
+  studentName: string;
+  phone: string;
+  cycleIndex: number;
+  sessionsTarget: number;
+  currentCycleSessions: number;
+  totalPresentSessions: number;
+  totalAmount: number;
+  amountPaid: number;
+  paymentDate: string;
+  status: string;
+  note: string;
+  sessions: Array<{ date: string; shiftLabel: string }>;
+}) {
+  const dataUrl = generateStudentTuitionSnapshotImage(data);
+  const fileName = `BaoCao_${data.studentName.replace(/\s+/g, '_')}_chu_ky_${data.cycleIndex}.png`;
+  downloadStudentTuitionSnapshotImage(dataUrl, fileName);
+}

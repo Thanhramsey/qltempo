@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Shift, Student, Attendance, AttendanceStatus } from '../types';
 import { Calendar as CalendarIcon, CheckCircle2, XCircle, AlertCircle, Save, Download, Loader2, RefreshCw, Printer, FileText } from 'lucide-react';
 import { exportAttendanceReport } from '../utils/csvExport';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 interface AttendanceTrackerProps {
   shifts: Shift[];
@@ -25,12 +27,62 @@ export default function AttendanceTracker({
   const [localStatuses, setLocalStatuses] = useState<Record<string, { status: AttendanceStatus; note: string }>>({});
   const [saving, setSaving] = useState(false);
 
+  const parseDateString = (value: string): Date | null => {
+    if (!value) return null;
+    const [y, m, d] = value.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d);
+  };
+
+  const formatDateString = (date: Date | null): string => {
+    if (!date) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const DATE_TO_WEEKDAY: Record<number, string> = {
+    0: 'Chủ Nhật',
+    1: 'Thứ 2',
+    2: 'Thứ 3',
+    3: 'Thứ 4',
+    4: 'Thứ 5',
+    5: 'Thứ 6',
+    6: 'Thứ 7',
+  };
+
+  const getWeekdayFromDate = (dateText: string): string => {
+    const date = new Date(dateText);
+    if (Number.isNaN(date.getTime())) return 'Không xác định';
+    return DATE_TO_WEEKDAY[date.getDay()] || 'Không xác định';
+  };
+
+  const selectedWeekday = getWeekdayFromDate(selectedDate);
+  const dayShifts = shifts.filter((shift) => {
+    const shiftDay = shift.weekday || shift.days?.[0] || '';
+    return shiftDay === selectedWeekday;
+  });
+
   // Default select first shift when shifts load
   useEffect(() => {
-    if (shifts.length > 0 && !selectedShiftId) {
-      setSelectedShiftId(shifts[0].id);
+    if (dayShifts.length > 0 && !selectedShiftId) {
+      setSelectedShiftId(dayShifts[0].id);
     }
-  }, [shifts]);
+  }, [dayShifts, selectedShiftId]);
+
+  // Ensure selected shift always belongs to selected weekday.
+  useEffect(() => {
+    if (dayShifts.length === 0) {
+      setSelectedShiftId('');
+      return;
+    }
+
+    const stillValid = dayShifts.some((shift) => shift.id === selectedShiftId);
+    if (!stillValid) {
+      setSelectedShiftId(dayShifts[0].id);
+    }
+  }, [selectedDate, dayShifts, selectedShiftId]);
 
   // Load existing records from Firebase whenever Date or ShiftId changes
   const activeShift = shifts.find(sh => sh.id === selectedShiftId);
@@ -86,6 +138,28 @@ export default function AttendanceTracker({
         note
       }
     }));
+  };
+
+  const handleCheckAllPresent = () => {
+    const updated: Record<string, { status: AttendanceStatus; note: string }> = {};
+    registeredStudents.forEach((st) => {
+      updated[st.id] = {
+        status: 'present',
+        note: localStatuses[st.id]?.note || ''
+      };
+    });
+    setLocalStatuses(updated);
+  };
+
+  const handleCheckAllAbsentExcused = () => {
+    const updated: Record<string, { status: AttendanceStatus; note: string }> = {};
+    registeredStudents.forEach((st) => {
+      updated[st.id] = {
+        status: 'absent_excused',
+        note: localStatuses[st.id]?.note || ''
+      };
+    });
+    setLocalStatuses(updated);
   };
 
   const handleSave = async () => {
@@ -193,26 +267,38 @@ export default function AttendanceTracker({
           </label>
           <div className="relative">
             <CalendarIcon className="absolute left-3.5 top-3 text-slate-400" size={18} />
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+            <DatePicker
+              selected={parseDateString(selectedDate)}
+              onChange={(date) => setSelectedDate(formatDateString(date as Date | null))}
+              dateFormat="dd/MM/yyyy"
+              placeholderText="Chọn ngày học"
+              showMonthDropdown
+              showYearDropdown
+              dropdownMode="select"
+              yearDropdownItemNumber={20}
+              wrapperClassName="w-full"
               className="w-full pl-11 pr-4 py-2.5 border border-slate-200 rounded-xl text-slate-800 font-semibold focus:outline-none focus:border-indigo-500"
             />
           </div>
+          <p className="text-xs text-indigo-600 font-semibold mt-1">
+            Thứ của ngày đã chọn: {selectedWeekday}
+          </p>
         </div>
 
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-            Bước 2: Chọn Ca học ({shifts.length})
+            Bước 2: Chọn Ca học theo {selectedWeekday} ({dayShifts.length})
           </label>
           <select
             value={selectedShiftId}
             onChange={(e) => setSelectedShiftId(e.target.value)}
+            disabled={dayShifts.length === 0}
             className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-slate-800 font-bold focus:outline-none focus:border-indigo-500 bg-white cursor-pointer"
           >
-            <option value="" disabled>--- Vui lòng chọn ca học ---</option>
-            {shifts.map(sh => (
+            <option value="" disabled>
+              {dayShifts.length === 0 ? '--- Không có ca học cho ngày này ---' : '--- Vui lòng chọn ca học ---'}
+            </option>
+            {dayShifts.map(sh => (
               <option key={sh.id} value={sh.id}>
                 {sh.name} - Môn: {sh.course} ({sh.time})
               </option>
@@ -389,24 +475,46 @@ export default function AttendanceTracker({
                 <span className="text-xs text-slate-400 font-medium">
                   Hãy nhấn lưu để cập nhật thông tin điểm danh của ngày và ca học này.
                 </span>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold rounded-xl text-sm shadow-md shadow-indigo-100 cursor-pointer transition-all duration-200"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Đang thực hiện lưu...
-                    </>
-                  ) : (
-                    <>
-                      <Save size={16} />
-                      Lưu Bảng Điểm Danh
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCheckAllPresent}
+                    disabled={totalStudents === 0 || saving}
+                    className="flex items-center gap-2 px-4 py-2.5 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl text-sm cursor-pointer transition-all duration-200 disabled:opacity-50"
+                  >
+                    <CheckCircle2 size={16} />
+                    Check All Có Mặt
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCheckAllAbsentExcused}
+                    disabled={totalStudents === 0 || saving}
+                    className="flex items-center gap-2 px-4 py-2.5 border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold rounded-xl text-sm cursor-pointer transition-all duration-200 disabled:opacity-50"
+                  >
+                    <AlertCircle size={16} />
+                    Check All Vắng (Có phép)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold rounded-xl text-sm shadow-md shadow-indigo-100 cursor-pointer transition-all duration-200"
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Đang thực hiện lưu...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        Lưu Bảng Điểm Danh
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )}

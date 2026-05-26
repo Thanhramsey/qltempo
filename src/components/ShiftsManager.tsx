@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Shift } from '../types';
-import { Calendar, Plus, Edit2, Trash2, Clock, BookOpen, DollarSign, X } from 'lucide-react';
+import { Calendar, Plus, Edit2, Trash2, Clock, BookOpen, X } from 'lucide-react';
 
 interface ShiftsManagerProps {
   shifts: Shift[];
@@ -10,51 +10,127 @@ interface ShiftsManagerProps {
 }
 
 const VIETNAMESE_DAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"];
+const DEFAULT_COURSE = 'Piano';
+const SLOT_OVERLOAD_THRESHOLD = 1;
+const BASE_TIME_SLOTS = [
+  '07h30-09h00',
+  '08h00-09h00',
+  '09h00-10h30',
+  '13h30-15h00',
+  '15h00-16h30',
+  '16h00-17h30',
+  '17h00-18h30',
+  '18h30-20h00'
+];
+const CUSTOM_TIME_SLOTS_KEY = 'edutrack_custom_time_slots';
+
+function normalizeTimeFormat(raw: string): string {
+  const value = raw.trim();
+  if (!value) return '';
+
+  // Convert old style "17:30 - 19:00" to "17h30-19h00" for consistent display.
+  return value
+    .replace(/\s+/g, '')
+    .replace(/:/g, 'h')
+    .replace(/H/g, 'h')
+    .replace(/–|—/g, '-')
+    .replace(/->/g, '-');
+}
 
 export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDeleteShift }: ShiftsManagerProps) {
   const [isOpenForm, setIsOpenForm] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [loading, setLoading] = useState(false);
+  const [daySearchFilter, setDaySearchFilter] = useState<string>('all');
 
   // Form states
-  const [name, setName] = useState('');
-  const [time, setTime] = useState('17:30 - 19:00');
-  const [course, setCourse] = useState('');
-  const [fee, setFee] = useState<number>(500000);
-  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [time, setTime] = useState(BASE_TIME_SLOTS[2]);
+  const [course, setCourse] = useState(DEFAULT_COURSE);
+  const [selectedDay, setSelectedDay] = useState<string>('Thứ 2');
+  const [customTimeSlots, setCustomTimeSlots] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(CUSTOM_TIME_SLOTS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const presetTimeSlots = useMemo(
+    () => [...new Set([...BASE_TIME_SLOTS, ...customTimeSlots])],
+    [customTimeSlots]
+  );
+  const suggestedName = `${selectedDay} ${time}`.trim();
+
+  const getShiftCountForSlot = (day: string, slot: string, excludeShiftId?: string): number => {
+    const normalizedSlot = normalizeTimeFormat(slot);
+    return shifts.filter((shift) => {
+      if (excludeShiftId && shift.id === excludeShiftId) return false;
+      const shiftDay = shift.weekday || shift.days?.[0] || '';
+      return shiftDay === day && normalizeTimeFormat(shift.time) === normalizedSlot;
+    }).length;
+  };
+
+  const duplicateCount = getShiftCountForSlot(selectedDay, time, editingShift?.id);
+  const isDuplicateExactSlot = duplicateCount > 0;
+  const filteredShifts = shifts.filter((shift) => {
+    if (daySearchFilter === 'all') return true;
+    const shiftDay = shift.weekday || shift.days?.[0] || '';
+    return shiftDay === daySearchFilter;
+  });
 
   const handleOpenAdd = () => {
     setEditingShift(null);
-    setName('');
-    setTime('17:30 - 19:00');
-    setCourse('');
-    setFee(500000);
-    setSelectedDays([]);
+    setTime(BASE_TIME_SLOTS[2]);
+    setCourse(DEFAULT_COURSE);
+    setSelectedDay('Thứ 2');
     setIsOpenForm(true);
+  };
+
+  const handleAddCustomTimeSlot = () => {
+    const normalizedTime = normalizeTimeFormat(time);
+    const timePattern = /^([01]?\d|2[0-3])h[0-5]\d-([01]?\d|2[0-3])h[0-5]\d$/;
+
+    if (!timePattern.test(normalizedTime)) {
+      alert('Định dạng giờ chưa đúng. Ví dụ hợp lệ: 10h30-12h00');
+      return;
+    }
+
+    if (presetTimeSlots.includes(normalizedTime)) {
+      alert('Khung giờ này đã có trong danh sách chọn nhanh.');
+      setTime(normalizedTime);
+      return;
+    }
+
+    const updated = [...customTimeSlots, normalizedTime];
+    setCustomTimeSlots(updated);
+    localStorage.setItem(CUSTOM_TIME_SLOTS_KEY, JSON.stringify(updated));
+    setTime(normalizedTime);
+    alert('Đã thêm khung giờ mới vào danh sách chọn nhanh.');
   };
 
   const handleOpenEdit = (shift: Shift) => {
     setEditingShift(shift);
-    setName(shift.name);
-    setTime(shift.time);
-    setCourse(shift.course);
-    setFee(shift.fee);
-    setSelectedDays(shift.days || []);
+    setTime(normalizeTimeFormat(shift.time));
+    setCourse(shift.course || DEFAULT_COURSE);
+    setSelectedDay(shift.weekday || shift.days?.[0] || 'Thứ 2');
     setIsOpenForm(true);
-  };
-
-  const toggleDay = (day: string) => {
-    if (selectedDays.includes(day)) {
-      setSelectedDays(selectedDays.filter(d => d !== day));
-    } else {
-      setSelectedDays([...selectedDays, day]);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !course.trim() || selectedDays.length === 0) {
-      alert("Vui lòng nhập đầy đủ Tên ca học, Môn học và chọn ít nhất 1 thứ học!");
+    if (!course.trim() || !selectedDay.trim() || !time.trim()) {
+      alert("Vui lòng nhập đầy đủ Thứ học, thời gian ca và Môn học!");
+      return;
+    }
+
+    const normalizedTime = normalizeTimeFormat(time);
+    const generatedName = `${selectedDay} ${normalizedTime}`;
+
+    const conflictCount = getShiftCountForSlot(selectedDay, normalizedTime, editingShift?.id);
+    if (conflictCount > 0) {
+      alert('Không thể lưu: đã tồn tại ca học trùng chính xác Thứ + Khung giờ.');
       return;
     }
 
@@ -63,19 +139,19 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
       if (editingShift) {
         await onEditShift({
           ...editingShift,
-          name,
-          time,
+          name: generatedName,
+          time: normalizedTime,
           course,
-          fee,
-          days: selectedDays
+          weekday: selectedDay,
+          days: [selectedDay]
         });
       } else {
         await onAddShift({
-          name,
-          time,
+          name: generatedName,
+          time: normalizedTime,
           course,
-          fee,
-          days: selectedDays
+          weekday: selectedDay,
+          days: [selectedDay]
         });
       }
       setIsOpenForm(false);
@@ -107,7 +183,7 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
             Học phần & Ca học ({shifts.length})
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Quản lý kế hoạch ca học, lịch diễn ra hàng tuần và mức phí áp dụng cho từng học phần.
+            Mỗi ca học tương ứng đúng 1 thứ trong tuần và 1 khung giờ cố định.
           </p>
         </div>
         <button
@@ -119,6 +195,25 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
         </button>
       </div>
 
+      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          Tìm ca học theo thứ
+        </label>
+        <select
+          value={daySearchFilter}
+          onChange={(e) => setDaySearchFilter(e.target.value)}
+          className="w-full md:w-72 px-3.5 py-2 border border-slate-200 rounded-xl text-slate-700 text-sm focus:outline-none focus:border-indigo-500 font-medium bg-white"
+        >
+          <option value="all">Tất cả thứ ({shifts.length} ca)</option>
+          {VIETNAMESE_DAYS.map((day) => {
+            const count = shifts.filter((shift) => (shift.weekday || shift.days?.[0] || '') === day).length;
+            return (
+              <option key={day} value={day}>{day} ({count} ca)</option>
+            );
+          })}
+        </select>
+      </div>
+
       {/* Grid of Shifts */}
       {shifts.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center text-slate-500 border border-slate-100 shadow-sm">
@@ -128,9 +223,17 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
             Hệ thống hiện chưa ghi nhận dữ liệu ca học. Vui lòng bấm "Tạo Ca Học Mới" phía trên để thiết lập.
           </p>
         </div>
+      ) : filteredShifts.length === 0 ? (
+        <div className="bg-white rounded-2xl p-12 text-center text-slate-500 border border-slate-100 shadow-sm">
+          <Calendar className="mx-auto text-slate-300 mb-3" size={48} />
+          <h3 className="font-semibold text-slate-700 text-lg">Không có ca học ở {daySearchFilter}</h3>
+          <p className="text-sm text-slate-400 mt-1 max-w-sm mx-auto">
+            Thử đổi bộ lọc sang thứ khác hoặc chọn "Tất cả thứ" để xem toàn bộ.
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {shifts.map((shift) => (
+          {filteredShifts.map((shift) => (
             <div
               key={shift.id}
               className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between"
@@ -167,18 +270,12 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={16} className="text-slate-400 shrink-0" />
-                    <span className="flex flex-wrap gap-1 items-center">
-                      Ngày học:
-                      {shift.days?.map(day => (
-                        <span key={day} className="px-1.5 py-0.5 bg-slate-100 rounded text-xs text-slate-600 font-medium">
-                          {day}
-                        </span>
-                      ))}
+                    <span className="flex items-center gap-1">
+                      Thứ học:
+                      <span className="px-1.5 py-0.5 bg-slate-100 rounded text-xs text-slate-600 font-medium">
+                        {shift.weekday || shift.days?.[0] || 'Chưa chọn'}
+                      </span>
                     </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <DollarSign size={16} className="text-slate-400 shrink-0" />
-                    <span>Học phí: <strong className="text-slate-700 font-bold">{(shift.fee || 0).toLocaleString()} VNĐ</strong> / tháng</span>
                   </div>
                 </div>
               </div>
@@ -211,31 +308,30 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Tên Ca Học *
+                  Tên ca tự gợi ý
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Ca Sáng Thứ 2-4-6"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500 font-medium"
-                />
+                <div className="w-full px-3.5 py-2 border border-indigo-200 bg-indigo-50/60 rounded-xl text-indigo-800 text-sm font-bold">
+                  {suggestedName || 'Vui lòng chọn thứ và thời gian'}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Hệ thống sẽ tự đặt tên theo mẫu: "Thứ + Khung giờ" để không cần nhập tay.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Thời Gian Học
+                    Thứ Học Trong Tuần *
                   </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ví dụ: 17:30 - 19:00"
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500 font-medium"
-                  />
+                  <select
+                    value={selectedDay}
+                    onChange={(e) => setSelectedDay(e.target.value)}
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500 font-medium bg-white"
+                  >
+                    {VIETNAMESE_DAYS.map((day) => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
@@ -244,7 +340,7 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
                   <input
                     type="text"
                     required
-                    placeholder="Ví dụ: Toán 10"
+                    placeholder="Ví dụ: Piano"
                     value={course}
                     onChange={(e) => setCourse(e.target.value)}
                     className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500 font-medium"
@@ -254,41 +350,62 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
 
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Học Phí Tính Theo Tháng (VNĐ) *
+                  Chọn nhanh khung giờ ca
                 </label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  placeholder="Ví dụ: 800000"
-                  value={fee}
-                  onChange={(e) => setFee(Number(e.target.value))}
-                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500 font-bold"
-                />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {presetTimeSlots.map((slot) => {
+                    const active = normalizeTimeFormat(time) === normalizeTimeFormat(slot);
+                    const count = getShiftCountForSlot(selectedDay, slot, editingShift?.id);
+                    const isOverloaded = count >= SLOT_OVERLOAD_THRESHOLD;
+
+                    return (
+                      <button
+                        type="button"
+                        key={slot}
+                        onClick={() => setTime(slot)}
+                        className={`px-2.5 py-2 rounded-lg text-xs text-left border transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                            : isOverloaded
+                            ? 'bg-rose-50 border-rose-300 text-rose-700 hover:bg-rose-100'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="font-bold">Ca {slot}</div>
+                        <div className={`text-[10px] mt-0.5 ${isOverloaded ? 'text-rose-600 font-semibold' : 'text-slate-500'}`}>
+                          {selectedDay}: {count} ca
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {isDuplicateExactSlot && (
+                  <p className="text-xs text-rose-600 mt-2 font-semibold">
+                    Cảnh báo: Khung giờ này đã có ca học cùng thứ. Hệ thống sẽ chặn lưu để tránh trùng hoàn toàn.
+                  </p>
+                )}
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Lịch Học Trong Tuần *
+                  Hoặc nhập thời gian khác (nếu cần)
                 </label>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {VIETNAMESE_DAYS.map((day) => {
-                    const isSelected = selectedDays.includes(day);
-                    return (
-                      <button
-                        type="button"
-                        key={day}
-                        onClick={() => toggleDay(day)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 ${
-                          isSelected
-                            ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-100'
-                            : 'bg-slate-50 hover:bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {day}
-                      </button>
-                    );
-                  })}
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: 10h30-12h00"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500 font-medium"
+                />
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleAddCustomTimeSlot}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 cursor-pointer"
+                  >
+                    + Thêm vào danh sách chọn nhanh
+                  </button>
                 </div>
               </div>
 
@@ -302,7 +419,7 @@ export default function ShiftsManager({ shifts, onAddShift, onEditShift, onDelet
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || isDuplicateExactSlot}
                   className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-sm font-semibold shadow-md shadow-indigo-100 cursor-pointer"
                 >
                   {loading ? "Đang lưu..." : "Xác Nhận Lưu"}

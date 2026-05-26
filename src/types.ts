@@ -2,9 +2,9 @@ export interface Shift {
   id: string;
   name: string;        // e.g. "Ca 1: Sáng Thứ 2-4-6"
   time: string;        // e.g. "08:00 - 09:30"
-  days: string[];      // e.g. ["Monday", "Wednesday", "Friday"]
+  weekday: string;     // e.g. "Thứ 2"
+  days?: string[];     // Backward compatible legacy field
   course: string;      // e.g. "Toán 10"
-  fee: number;         // Tuition fee per shift (VND/month or VND/session)
   createdAt: string;
 }
 
@@ -46,8 +46,10 @@ export interface UserAccount {
 export interface Payment {
   id: string;
   studentId: string;
-  shiftId: string;
-  month: string;       // e.g. "2026-05"
+  cycleIndex: number;  // 1-based cycle index, each cycle has 24 sessions
+  sessionsTarget: number;
+  shiftId?: string;    // Legacy field
+  month?: string;      // Legacy field
   amountPaid: number;
   totalAmount: number;
   status: PaymentStatus;

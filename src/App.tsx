@@ -68,29 +68,26 @@ const SEED_USERS: UserAccount[] = [
 const SEED_SHIFTS: Shift[] = [
   {
     id: 's1',
-    name: 'Ca Chiều thứ 2-4-6',
+    name: 'Ca 1',
+    weekday: 'Thứ 2',
     time: '17:30 - 19:00',
-    days: ['Thứ 2', 'Thứ 4', 'Thứ 6'],
     course: 'Toán Học Lớp 10',
-    fee: 800000,
     createdAt: new Date().toISOString()
   },
   {
     id: 's2',
-    name: 'Ca Sáng thứ 7-CN',
+    name: 'Ca 2',
+    weekday: 'Thứ 2',
     time: '08:00 - 09:30',
-    days: ['Thứ 7', 'Chủ Nhật'],
     course: 'Tiếng Anh Giao Tiếp',
-    fee: 1200000,
     createdAt: new Date().toISOString()
   },
   {
     id: 's3',
-    name: 'Ca Tối thứ 3-5',
+    name: 'Ca 3',
+    weekday: 'Thứ 4',
     time: '19:30 - 21:00',
-    days: ['Thứ 3', 'Thứ 5'],
     course: 'Vật Lý Lớp 11',
-    fee: 900000,
     createdAt: new Date().toISOString()
   }
 ];
@@ -250,7 +247,15 @@ export default function App() {
       const unsubShifts = onSnapshot(collection(db, 'shifts'), (snapshot) => {
         const list: Shift[] = [];
         snapshot.forEach(doc => list.push(doc.data() as Shift));
-        setShifts(list.sort((a,b) => b.createdAt.localeCompare(a.createdAt)));
+        const normalized = list.map((shift) => {
+          const weekday = shift.weekday || shift.days?.[0] || 'Thứ 2';
+          return {
+            ...shift,
+            weekday,
+            days: shift.days && shift.days.length > 0 ? shift.days : [weekday]
+          };
+        });
+        setShifts(normalized.sort((a,b) => b.createdAt.localeCompare(a.createdAt)));
         setLoadingShifts(false);
       }, (err) => {
         handleFirestoreError(err, OperationType.GET, 'shifts');
@@ -324,7 +329,18 @@ export default function App() {
       const localPaymentsStr = localStorage.getItem(`${DEMO_KEY_PREFIX}payments`);
       const localUsersStr = localStorage.getItem(`${DEMO_KEY_PREFIX}users`);
 
-      if (localShiftsStr) setShifts(JSON.parse(localShiftsStr));
+      if (localShiftsStr) {
+        const localShifts = JSON.parse(localShiftsStr) as Shift[];
+        const normalized = localShifts.map((shift) => {
+          const weekday = shift.weekday || shift.days?.[0] || 'Thứ 2';
+          return {
+            ...shift,
+            weekday,
+            days: shift.days && shift.days.length > 0 ? shift.days : [weekday]
+          };
+        });
+        setShifts(normalized);
+      }
       else {
         setShifts(SEED_SHIFTS);
         localStorage.setItem(`${DEMO_KEY_PREFIX}shifts`, JSON.stringify(SEED_SHIFTS));
@@ -851,9 +867,11 @@ export default function App() {
             <StudentsManager
               students={students}
               shifts={shifts}
+              attendances={attendances}
               onAddStudent={handleAddStudent}
               onEditStudent={handleEditStudent}
               onDeleteStudent={handleDeleteStudent}
+              onSaveAttendance={handleSaveAttendance}
             />
           )}
 
@@ -872,6 +890,7 @@ export default function App() {
             <TuitionManager
               shifts={shifts}
               students={students}
+              attendances={attendances}
               payments={payments}
               onUpdatePayment={handleUpdatePayment}
               loadingPayments={loadingPayments}
