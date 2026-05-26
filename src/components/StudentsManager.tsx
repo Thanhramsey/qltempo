@@ -41,7 +41,10 @@ interface StudentsManagerProps {
   onEditStudent: (student: Student) => Promise<void>;
   onDeleteStudent: (id: string) => Promise<void>;
   onSaveAttendance: (attendanceData: Omit<Attendance, 'updatedAt'>[]) => Promise<void>;
+  onDeleteAttendance: (attendanceIds: string[]) => Promise<void>;
 }
+
+type HistoryAttendanceStatus = Attendance['status'] | 'unmarked';
 
 function parseDateString(value: string): Date | null {
   if (!value) return null;
@@ -157,7 +160,7 @@ function getShiftTheme(shiftId: string) {
   return SHIFT_COLOR_THEMES[hash % SHIFT_COLOR_THEMES.length];
 }
 
-export default function StudentsManager({ students, shifts, attendances, onAddStudent, onEditStudent, onDeleteStudent, onSaveAttendance }: StudentsManagerProps) {
+export default function StudentsManager({ students, shifts, attendances, onAddStudent, onEditStudent, onDeleteStudent, onSaveAttendance, onDeleteAttendance }: StudentsManagerProps) {
   const [isOpenForm, setIsOpenForm] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [loading, setLoading] = useState(false);
@@ -165,7 +168,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
   const [historyStudent, setHistoryStudent] = useState<Student | null>(null);
   const [historySaving, setHistorySaving] = useState(false);
   const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'present' | 'absent_excused' | 'absent_unexcused'>('all');
-  const [historyDrafts, setHistoryDrafts] = useState<Record<string, { status: Attendance['status']; note: string }>>({});
+  const [historyDrafts, setHistoryDrafts] = useState<Record<string, { status: HistoryAttendanceStatus; note: string }>>({});
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -404,7 +407,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
     setHistoryStudent(student);
     setHistoryStatusFilter('all');
 
-    const initialDrafts: Record<string, { status: Attendance['status']; note: string }> = {};
+    const initialDrafts: Record<string, { status: HistoryAttendanceStatus; note: string }> = {};
     attendances
       .filter((att) => att.studentId === student.id)
       .forEach((att) => {
@@ -427,7 +430,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       ...prev,
       [attendanceId]: {
         status: field === 'status'
-          ? (value as Attendance['status'])
+          ? (value as HistoryAttendanceStatus)
           : (prev[attendanceId]?.status || 'present'),
         note: field === 'note' ? value : (prev[attendanceId]?.note || ''),
       },
@@ -442,26 +445,37 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       .filter((att) => {
         const draft = historyDrafts[att.id];
         if (!draft) return false;
+        if (draft.status === 'unmarked') return true;
         return draft.status !== att.status || draft.note !== (att.note || '');
       })
+      .filter((att) => historyDrafts[att.id].status !== 'unmarked')
       .map((att) => ({
         id: att.id,
         date: att.date,
         shiftId: att.shiftId,
         studentId: att.studentId,
-        status: historyDrafts[att.id].status,
+        status: historyDrafts[att.id].status as Attendance['status'],
         note: historyDrafts[att.id].note,
       }));
 
-    if (changedRecords.length === 0) {
+    const deletedIds = studentAttendances
+      .filter((att) => historyDrafts[att.id]?.status === 'unmarked')
+      .map((att) => att.id);
+
+    if (changedRecords.length === 0 && deletedIds.length === 0) {
       alert('Không có thay đổi nào để lưu.');
       return;
     }
 
     setHistorySaving(true);
     try {
-      await onSaveAttendance(changedRecords);
-      alert(`Đã cập nhật ${changedRecords.length} bản ghi điểm danh.`);
+      if (changedRecords.length > 0) {
+        await onSaveAttendance(changedRecords);
+      }
+      if (deletedIds.length > 0) {
+        await onDeleteAttendance(deletedIds);
+      }
+      alert(`Đã cập nhật ${changedRecords.length} bản ghi và xóa ${deletedIds.length} bản ghi về chưa điểm danh.`);
     } catch (err) {
       console.error(err);
       alert('Không thể cập nhật lịch sử điểm danh. Vui lòng thử lại.');
@@ -1088,6 +1102,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                               <option value="present">Có mặt</option>
                               <option value="absent_excused">Vắng có phép</option>
                               <option value="absent_unexcused">Vắng không phép</option>
+                              <option value="unmarked">Xóa điểm danh (về chưa điểm danh)</option>
                             </select>
                           </td>
                           <td className="px-6 py-3">

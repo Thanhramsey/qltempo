@@ -10,22 +10,42 @@ interface AttendanceTrackerProps {
   students: Student[];
   attendances: Attendance[];
   onSaveAttendance: (attendanceData: Omit<Attendance, 'updatedAt'>[]) => Promise<void>;
+  onDeleteAttendance: (attendanceIds: string[]) => Promise<void>;
   loadingAttendances: boolean;
   onRefreshAttendances: () => Promise<void>;
 }
+
+type AttendanceEditStatus = AttendanceStatus | 'unmarked';
+type ToastType = 'success' | 'error';
 
 export default function AttendanceTracker({
   shifts,
   students,
   attendances,
   onSaveAttendance,
+  onDeleteAttendance,
   loadingAttendances,
   onRefreshAttendances
 }: AttendanceTrackerProps) {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [selectedShiftId, setSelectedShiftId] = useState<string>('');
-  const [localStatuses, setLocalStatuses] = useState<Record<string, { status: AttendanceStatus; note: string }>>({});
+  const [localStatuses, setLocalStatuses] = useState<Record<string, { status: AttendanceEditStatus; note: string }>>({});
   const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
+
+  const showToast = (type: ToastType, message: string) => {
+    setToast({ type, message });
+  };
+
+  useEffect(() => {
+    if (!toast) return;
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, 2800);
+
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const parseDateString = (value: string): Date | null => {
     if (!value) return null;
@@ -93,7 +113,7 @@ export default function AttendanceTracker({
   useEffect(() => {
     if (!selectedShiftId || !selectedDate) return;
 
-    const initialStatuses: Record<string, { status: AttendanceStatus; note: string }> = {};
+    const initialStatuses: Record<string, { status: AttendanceEditStatus; note: string }> = {};
     
     registeredStudents.forEach(st => {
       // Find matching attendance record
@@ -109,9 +129,9 @@ export default function AttendanceTracker({
           note: match.note || ''
         };
       } else {
-        // Default to 'present' for easy attendance checking
+        // No record means student is still unmarked
         initialStatuses[st.id] = {
-          status: 'present',
+          status: 'unmarked',
           note: ''
         };
       }
@@ -120,7 +140,7 @@ export default function AttendanceTracker({
     setLocalStatuses(initialStatuses);
   }, [selectedDate, selectedShiftId, attendances, students]);
 
-  const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
+  const handleStatusChange = (studentId: string, status: AttendanceEditStatus) => {
     setLocalStatuses(prev => ({
       ...prev,
       [studentId]: {
@@ -141,7 +161,7 @@ export default function AttendanceTracker({
   };
 
   const handleCheckAllPresent = () => {
-    const updated: Record<string, { status: AttendanceStatus; note: string }> = {};
+    const updated: Record<string, { status: AttendanceEditStatus; note: string }> = {};
     registeredStudents.forEach((st) => {
       updated[st.id] = {
         status: 'present',
@@ -152,7 +172,7 @@ export default function AttendanceTracker({
   };
 
   const handleCheckAllAbsentExcused = () => {
-    const updated: Record<string, { status: AttendanceStatus; note: string }> = {};
+    const updated: Record<string, { status: AttendanceEditStatus; note: string }> = {};
     registeredStudents.forEach((st) => {
       updated[st.id] = {
         status: 'absent_excused',
@@ -166,23 +186,40 @@ export default function AttendanceTracker({
     if (!selectedShiftId) return;
     setSaving(true);
     try {
-      const recordsToSave = registeredStudents.map(st => {
-        const local = localStatuses[st.id] || { status: 'present', note: '' };
-        return {
-          id: `${selectedDate}_${selectedShiftId}_${st.id}`,
+      const recordsToSave: Omit<Attendance, 'updatedAt'>[] = [];
+      const attendanceIdsToDelete: string[] = [];
+
+      registeredStudents.forEach((st) => {
+        const local = localStatuses[st.id] || { status: 'unmarked' as AttendanceEditStatus, note: '' };
+        const recordId = `${selectedDate}_${selectedShiftId}_${st.id}`;
+
+        if (local.status === 'unmarked') {
+          attendanceIdsToDelete.push(recordId);
+          return;
+        }
+
+        recordsToSave.push({
+          id: recordId,
           date: selectedDate,
           shiftId: selectedShiftId,
           studentId: st.id,
           status: local.status,
           note: local.note
-        };
+        });
       });
 
-      await onSaveAttendance(recordsToSave);
-      alert("Đã lưu bảng điểm danh thành công lên hệ thống!");
+      if (recordsToSave.length > 0) {
+        await onSaveAttendance(recordsToSave);
+      }
+
+      if (attendanceIdsToDelete.length > 0) {
+        await onDeleteAttendance(attendanceIdsToDelete);
+      }
+
+      showToast('success', `Đã lưu ${recordsToSave.length} bản ghi, xóa ${attendanceIdsToDelete.length} bản ghi để về chưa điểm danh.`);
     } catch (err) {
       console.error(err);
-      alert("Không thể lưu điểm danh. Thẻ kiểm tra lỗi.");
+      showToast('error', 'Không thể lưu điểm danh. Vui lòng kiểm tra lại và thử thêm lần nữa.');
     } finally {
       setSaving(false);
     }
@@ -191,7 +228,7 @@ export default function AttendanceTracker({
   const handleExportExcel = () => {
     if (!activeShift) return;
     const currentRecords = registeredStudents.map(st => {
-      const local = localStatuses[st.id] || { status: 'present', note: '' };
+      const local = localStatuses[st.id] || { status: 'unmarked' as AttendanceEditStatus, note: '' };
       return {
         studentId: st.id,
         status: local.status,
@@ -217,10 +254,43 @@ export default function AttendanceTracker({
     return (localStatuses[st.id]?.status === 'absent_unexcused');
   }).length;
 
+  const unmarkedCount = registeredStudents.filter(st => {
+    return (!localStatuses[st.id] || localStatuses[st.id]?.status === 'unmarked');
+  }).length;
+
   const attendanceRate = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
 
   return (
     <div className="space-y-6">
+      {toast && (
+        <div className="print:hidden fixed top-5 right-5 z-50">
+          <div
+            className={`min-w-[320px] max-w-[460px] rounded-xl border px-4 py-3 shadow-lg backdrop-blur-sm flex items-start gap-2 ${
+              toast.type === 'success'
+                ? 'bg-emerald-50/95 border-emerald-200 text-emerald-800'
+                : 'bg-rose-50/95 border-rose-200 text-rose-800'
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {toast.type === 'success' ? (
+              <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
+            ) : (
+              <AlertCircle size={18} className="mt-0.5 shrink-0" />
+            )}
+            <div className="text-sm font-semibold leading-5">{toast.message}</div>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="ml-auto text-xs font-bold opacity-70 hover:opacity-100 cursor-pointer"
+              aria-label="Đóng thông báo"
+            >
+              Dong
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Attendance Picker Block */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-white p-6 rounded-2xl border border-slate-100 shadow-sm gap-4 print:hidden">
         <div>
@@ -320,7 +390,7 @@ export default function AttendanceTracker({
 
       {/* Stats micro widget */}
       {selectedShiftId && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col justify-center">
             <span className="text-2xs font-bold text-slate-400 uppercase tracking-wider">Tổng số học sinh ca</span>
             <span className="text-2xl font-bold text-slate-800 mt-1">{totalStudents}</span>
@@ -339,6 +409,11 @@ export default function AttendanceTracker({
           <div className="bg-rose-50/50 p-4 rounded-xl border border-rose-100 shadow-sm flex flex-col justify-center">
             <span className="text-2xs font-bold text-rose-600 uppercase tracking-wider">Vắng (Không phép)</span>
             <span className="text-2xl font-bold text-rose-700 mt-1">{unexcusedCount}</span>
+          </div>
+
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+            <span className="text-2xs font-bold text-slate-500 uppercase tracking-wider">Chưa điểm danh</span>
+            <span className="text-2xl font-bold text-slate-700 mt-1">{unmarkedCount}</span>
           </div>
         </div>
       )}
@@ -381,13 +456,14 @@ export default function AttendanceTracker({
                       <th className="px-6 py-4 text-center print:hidden">Có mặt</th>
                       <th className="px-6 py-4 text-center print:hidden">Vắng phép</th>
                       <th className="px-6 py-4 text-center print:hidden">Vắng KP</th>
+                      <th className="px-6 py-4 text-center print:hidden">Chưa điểm danh</th>
                       <th className="px-6 py-4 hidden print:table-cell text-center">Trạng thái điểm danh</th>
                       <th className="px-6 py-4">Ghi chú nhanh</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                     {registeredStudents.map((st) => {
-                      const local = localStatuses[st.id] || { status: 'present', note: '' };
+                      const local = localStatuses[st.id] || { status: 'unmarked' as AttendanceEditStatus, note: '' };
                       return (
                         <tr key={st.id} className="hover:bg-slate-50/20 transition-colors">
                           <td className="px-6 py-3.5">
@@ -447,11 +523,27 @@ export default function AttendanceTracker({
                             </button>
                           </td>
 
+                          <td className="px-6 py-3.5 text-center print:hidden">
+                            <button
+                              type="button"
+                              onClick={() => handleStatusChange(st.id, 'unmarked')}
+                              className={`h-9 w-9 rounded-full inline-flex items-center justify-center transition-all cursor-pointer ${
+                                local.status === 'unmarked'
+                                  ? 'bg-slate-200 text-slate-700 ring-2 ring-slate-400/30 scale-105'
+                                  : 'bg-slate-50 text-slate-300 hover:text-slate-400'
+                              }`}
+                              title="Xóa điểm danh về trạng thái chưa điểm danh"
+                            >
+                              <FileText size={18} />
+                            </button>
+                          </td>
+
                           {/* Print column render status */}
                           <td className="px-6 py-3.5 hidden print:table-cell text-center font-semibold">
                             {local.status === 'present' && "Có mặt (P)"}
                             {local.status === 'absent_excused' && "Vắng có phép (CP)"}
                             {local.status === 'absent_unexcused' && "Vắng không phép (KP)"}
+                            {local.status === 'unmarked' && "Chưa điểm danh"}
                           </td>
 
                           {/* Notes column */}

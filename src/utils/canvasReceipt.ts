@@ -426,3 +426,205 @@ export function exportStudentTuitionSnapshot(data: {
   const fileName = `BaoCao_${data.studentName.replace(/\s+/g, '_')}_chu_ky_${data.cycleIndex}.png`;
   downloadStudentTuitionSnapshotImage(dataUrl, fileName);
 }
+
+export function generateStudentAttendanceRangeImage(data: {
+  studentName: string;
+  phone: string;
+  fromDate: string;
+  toDate: string;
+  totalRecords: number;
+  presentCount: number;
+  excusedCount: number;
+  unexcusedCount: number;
+  shiftBreakdown: Array<{ shiftLabel: string; presentCount: number; totalCount: number }>;
+}) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1000;
+  canvas.height = 920;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const bg = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  bg.addColorStop(0, '#f8fafc');
+  bg.addColorStop(1, '#eef2ff');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const head = ctx.createLinearGradient(0, 0, canvas.width, 0);
+  head.addColorStop(0, '#0f172a');
+  head.addColorStop(1, '#1e293b');
+  ctx.fillStyle = head;
+  ctx.fillRect(0, 0, canvas.width, 118);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 30px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText('BÁO CÁO ĐIỂM DANH THEO KHOẢNG NGÀY', 34, 66);
+  ctx.font = '15px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = '#cbd5e1';
+  ctx.fillText(`Ngày xuất: ${new Date().toISOString().slice(0, 10).split('-').reverse().join('/')}`, 34, 95);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#dbe2ee';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(28, 138, 944, 230, 16);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#1e3a8a';
+  ctx.font = 'bold 21px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText('THÔNG TIN HỌC SINH', 50, 178);
+
+  ctx.fillStyle = '#0f172a';
+  ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText(`Họ tên: ${data.studentName}`, 50, 215);
+  ctx.fillText(`SĐT: ${data.phone || '---'}`, 50, 245);
+  ctx.fillText(
+    `Khoảng ngày: ${data.fromDate.split('-').reverse().join('/')} -> ${data.toDate.split('-').reverse().join('/')}`,
+    50,
+    275
+  );
+
+  ctx.fillStyle = '#334155';
+  ctx.fillText(`Tổng lượt điểm danh: ${data.totalRecords}`, 50, 320);
+  ctx.fillStyle = '#065f46';
+  ctx.fillText(`Có mặt: ${data.presentCount}`, 310, 320);
+  ctx.fillStyle = '#92400e';
+  ctx.fillText(`Vắng phép: ${data.excusedCount}`, 460, 320);
+  ctx.fillStyle = '#991b1b';
+  ctx.fillText(`Vắng KP: ${data.unexcusedCount}`, 640, 320);
+
+  const debtColor = data.presentCount > 0 ? '#059669' : '#b45309';
+  ctx.fillStyle = debtColor;
+  ctx.font = 'bold 15px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText(
+    data.presentCount > 0
+      ? `Đã học ${data.presentCount} buổi trong khoảng đã chọn`
+      : 'Chưa có buổi có mặt trong khoảng đã chọn',
+    50,
+    348
+  );
+
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#dbe2ee';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(28, 390, 944, 500, 16);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#1e3a8a';
+  ctx.font = 'bold 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText('THỐNG KÊ CA HỌC TRONG KHOẢNG', 50, 430);
+  ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = '#64748b';
+  ctx.fillText('Sắp xếp theo số buổi có mặt giảm dần', 50, 452);
+
+  const tableX = 50;
+  const tableY = 472;
+  const tableWidth = 900;
+  const headH = 38;
+  const rowH = 34;
+  const maxRows = 10;
+  const rows = data.shiftBreakdown.slice(0, maxRows);
+
+  const tHead = ctx.createLinearGradient(tableX, tableY, tableX + tableWidth, tableY);
+  tHead.addColorStop(0, '#1d4ed8');
+  tHead.addColorStop(1, '#4338ca');
+  ctx.fillStyle = tHead;
+  ctx.beginPath();
+  ctx.roundRect(tableX, tableY, tableWidth, headH, 10);
+  ctx.fill();
+
+  const c1 = tableX + 70;
+  const c2 = tableX + 620;
+  const c3 = tableX + 770;
+  const tableBottom = tableY + headH + Math.max(rows.length, 1) * rowH;
+
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.beginPath();
+  ctx.moveTo(c1, tableY);
+  ctx.lineTo(c1, tableBottom);
+  ctx.moveTo(c2, tableY);
+  ctx.lineTo(c2, tableBottom);
+  ctx.moveTo(c3, tableY);
+  ctx.lineTo(c3, tableBottom);
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText('STT', tableX + 18, tableY + 24);
+  ctx.fillText('Ca học', c1 + 18, tableY + 24);
+  ctx.fillText('Có mặt', c2 + 18, tableY + 24);
+  ctx.fillText('Tổng điểm danh', c3 + 18, tableY + 24);
+
+  ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  rows.forEach((row, idx) => {
+    const top = tableY + headH + idx * rowH;
+    const centerY = top + 22;
+
+    if (idx % 2 === 0) {
+      ctx.fillStyle = 'rgba(99, 102, 241, 0.05)';
+      ctx.fillRect(tableX + 1, top, tableWidth - 2, rowH);
+    }
+
+    ctx.strokeStyle = '#eef2ff';
+    ctx.beginPath();
+    ctx.moveTo(tableX, top + rowH);
+    ctx.lineTo(tableX + tableWidth, top + rowH);
+    ctx.stroke();
+
+    ctx.fillStyle = '#1e293b';
+    ctx.fillText(String(idx + 1), tableX + 25, centerY);
+    ctx.fillText(row.shiftLabel, c1 + 18, centerY);
+    ctx.fillText(String(row.presentCount), c2 + 18, centerY);
+    ctx.fillText(String(row.totalCount), c3 + 18, centerY);
+  });
+
+  if (rows.length === 0) {
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('Không có dữ liệu ca học trong khoảng ngày đã chọn.', c1 + 18, tableY + headH + 22);
+  }
+
+  if (data.shiftBreakdown.length > rows.length) {
+    const remain = data.shiftBreakdown.length - rows.length;
+    ctx.fillStyle = '#64748b';
+    ctx.font = '12px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText(`... còn ${remain} ca học chưa hiển thị`, tableX + 6, tableBottom + 20);
+  }
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillText('Tempo - Báo cáo thống kê điểm danh theo khoảng ngày', canvas.width / 2, 906);
+
+  const dataURL = canvas.toDataURL('image/png');
+  return dataURL;
+}
+
+export function downloadStudentAttendanceRangeImage(dataUrl: string, fileName: string) {
+  if (!dataUrl) return;
+
+  const link = document.createElement('a');
+  link.download = fileName;
+  link.href = dataUrl;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+export function exportStudentAttendanceRangeImage(data: {
+  studentName: string;
+  phone: string;
+  fromDate: string;
+  toDate: string;
+  totalRecords: number;
+  presentCount: number;
+  excusedCount: number;
+  unexcusedCount: number;
+  shiftBreakdown: Array<{ shiftLabel: string; presentCount: number; totalCount: number }>;
+}) {
+  const dataUrl = generateStudentAttendanceRangeImage(data);
+  const fileName = `BaoCao_DiemDanh_${data.studentName.replace(/\s+/g, '_')}_${data.fromDate}_${data.toDate}.png`;
+  downloadStudentAttendanceRangeImage(dataUrl, fileName);
+}

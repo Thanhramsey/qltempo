@@ -519,6 +519,26 @@ export default function App() {
     }
   };
 
+  const handleDeleteAttendance = async (attendanceIds: string[]) => {
+    if (attendanceIds.length === 0) return;
+
+    if (isOnline) {
+      for (const attendanceId of attendanceIds) {
+        const path = `attendances/${attendanceId}`;
+        try {
+          await deleteDoc(doc(db, 'attendances', attendanceId));
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, path);
+        }
+      }
+    } else {
+      const removeSet = new Set(attendanceIds);
+      const updated = attendances.filter((att) => !removeSet.has(att.id));
+      setAttendances(updated);
+      localStorage.setItem(`${DEMO_KEY_PREFIX}attendances`, JSON.stringify(updated));
+    }
+  };
+
   // Refresh Attendance Trigger helper for fetching
   const handleRefreshAttendances = async () => {
     if (isOnline) {
@@ -892,6 +912,7 @@ export default function App() {
               onEditStudent={handleEditStudent}
               onDeleteStudent={handleDeleteStudent}
               onSaveAttendance={handleSaveAttendance}
+              onDeleteAttendance={handleDeleteAttendance}
             />
           )}
 
@@ -901,6 +922,7 @@ export default function App() {
               students={students}
               attendances={attendances}
               onSaveAttendance={handleSaveAttendance}
+              onDeleteAttendance={handleDeleteAttendance}
               loadingAttendances={loadingAttendances}
               onRefreshAttendances={handleRefreshAttendances}
             />
