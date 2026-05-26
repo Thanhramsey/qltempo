@@ -16,6 +16,13 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { Shift, Student, Attendance, Payment, UserAccount } from './types';
+import {
+  deleteSheetsItem,
+  isSheetsConfigured,
+  loadSheetsData,
+  upsertSheetsItem,
+  upsertSheetsMany,
+} from './data/sheetsApi';
 
 // Icons
 import {
@@ -47,6 +54,7 @@ import ReportsManager from './components/ReportsManager';
 import UsageGuide from './components/UsageGuide';
 
 const DEMO_KEY_PREFIX = 'edutrack_demo_';
+const PREFERRED_BACKEND = import.meta.env.VITE_DATA_BACKEND || 'sheets';
 
 // Custom Accounts Seed
 const SEED_USERS: UserAccount[] = [
@@ -155,6 +163,9 @@ const SEED_STUDENTS: Student[] = [
 ];
 
 export default function App() {
+  const useSheetsBackend = PREFERRED_BACKEND === 'sheets' && isSheetsConfigured();
+  const sheetsPreferredWithoutConfig = PREFERRED_BACKEND === 'sheets' && !isSheetsConfigured();
+
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [bypassAuth, setBypassAuth] = useState(false);
@@ -166,7 +177,7 @@ export default function App() {
   const [loadingUsers, setLoadingUsers] = useState(false);
 
   // Computed online status using either standard Auth session or custom verified logins
-  const isOnline = !bypassAuth && (user !== null || currentUserAccount !== null);
+  const isOnline = useSheetsBackend || (!bypassAuth && (user !== null || currentUserAccount !== null));
 
   // Core Data States
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -183,8 +194,19 @@ export default function App() {
   const [loadingAttendances, setLoadingAttendances] = useState(false);
   const [loadingPayments, setLoadingPayments] = useState(false);
 
+  useEffect(() => {
+    if (sheetsPreferredWithoutConfig) {
+      console.warn('DATA_BACKEND=sheets nhưng thiếu VITE_SHEETS_API_URL, hệ thống tự chuyển sang Firebase.');
+    }
+  }, [sheetsPreferredWithoutConfig]);
+
   // 1. Auth Listener
   useEffect(() => {
+    if (useSheetsBackend) {
+      setAuthLoading(false);
+      return;
+    }
+
     // Restore custom user session if exists
     const savedUserAccount = localStorage.getItem(`${DEMO_KEY_PREFIX}current_user_account`);
     if (savedUserAccount) {
@@ -217,11 +239,11 @@ export default function App() {
       setAuthLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [useSheetsBackend]);
 
   // 2. Validate FireStore DB Online connection as mandated by skill
   useEffect(() => {
-    if (isOnline) {
+    if (isOnline && !useSheetsBackend) {
       const testConnection = async () => {
         try {
           const testRef = doc(db, 'test', 'connection');
@@ -235,11 +257,73 @@ export default function App() {
       };
       testConnection();
     }
-  }, [isOnline]);
+  }, [isOnline, useSheetsBackend]);
 
   // 3. Real-time Firebase Sync or Local Storage Fallback
   useEffect(() => {
     if (isOnline) {
+      if (useSheetsBackend) {
+        setLoadingShifts(true);
+        setLoadingStudents(true);
+        setLoadingAttendances(true);
+        setLoadingPayments(true);
+        setLoadingUsers(true);
+
+        let cancelled = false;
+
+        const loadFromSheets = async () => {
+          try {
+            const data = await loadSheetsData();
+            if (cancelled) return;
+
+            const normalizedShifts = data.shifts.map((shift) => {
+              const weekday = shift.weekday || shift.days?.[0] || 'Thứ 2';
+              return {
+                ...shift,
+                weekday,
+                days: shift.days && shift.days.length > 0 ? shift.days : [weekday],
+              };
+            });
+
+            setShifts(normalizedShifts.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+            setStudents(data.students.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+            setAttendances(data.attendances);
+            setPayments(data.payments);
+            setUsersList(data.users);
+
+            if (!currentUserAccount) {
+              const defaultAccount =
+                data.users.find((u) => u.role === 'admin') ||
+                data.users[0] ||
+                {
+                  id: 'sheets_local_user',
+                  name: 'Sheet Owner',
+                  email: 'sheet.local@tempo',
+                  role: 'admin' as const,
+                  createdAt: new Date().toISOString(),
+                };
+              setCurrentUserAccount(defaultAccount);
+            }
+          } catch (error) {
+            console.error('Load dữ liệu từ Google Sheets thất bại:', error);
+          } finally {
+            if (!cancelled) {
+              setLoadingShifts(false);
+              setLoadingStudents(false);
+              setLoadingAttendances(false);
+              setLoadingPayments(false);
+              setLoadingUsers(false);
+            }
+          }
+        };
+
+        loadFromSheets();
+
+        return () => {
+          cancelled = true;
+        };
+      }
+
       // --- LIVE FIRESTORE DATA SYNC ---
       setLoadingShifts(true);
       setLoadingStudents(true);
@@ -374,7 +458,7 @@ export default function App() {
       setLoadingPayments(false);
       setLoadingUsers(false);
     }
-  }, [isOnline, bypassAuth, user, currentUserAccount]);
+  }, [isOnline, bypassAuth, user, currentUserAccount, useSheetsBackend]);
 
   // A. Shift Mutations
   const handleAddShift = async (shiftInput: Omit<Shift, 'id' | 'createdAt'>) => {
@@ -386,6 +470,12 @@ export default function App() {
     };
 
     if (isOnline) {
+      if (useSheetsBackend) {
+        await upsertSheetsItem('shifts', newShift);
+        setShifts((prev) => [newShift, ...prev]);
+        return;
+      }
+
       const path = `shifts/${id}`;
       try {
         await setDoc(doc(db, 'shifts', id), newShift);
@@ -401,6 +491,12 @@ export default function App() {
 
   const handleEditShift = async (shiftToEdit: Shift) => {
     if (isOnline) {
+      if (useSheetsBackend) {
+        await upsertSheetsItem('shifts', shiftToEdit);
+        setShifts((prev) => prev.map((sh) => (sh.id === shiftToEdit.id ? shiftToEdit : sh)));
+        return;
+      }
+
       const path = `shifts/${shiftToEdit.id}`;
       try {
         await setDoc(doc(db, 'shifts', shiftToEdit.id), shiftToEdit);
@@ -416,6 +512,12 @@ export default function App() {
 
   const handleDeleteShift = async (id: string) => {
     if (isOnline) {
+      if (useSheetsBackend) {
+        await deleteSheetsItem('shifts', id);
+        setShifts((prev) => prev.filter((sh) => sh.id !== id));
+        return;
+      }
+
       const path = `shifts/${id}`;
       try {
         await deleteDoc(doc(db, 'shifts', id));
@@ -439,6 +541,12 @@ export default function App() {
     };
 
     if (isOnline) {
+      if (useSheetsBackend) {
+        await upsertSheetsItem('students', newStudent);
+        setStudents((prev) => [newStudent, ...prev]);
+        return;
+      }
+
       const path = `students/${id}`;
       try {
         await setDoc(doc(db, 'students', id), newStudent);
@@ -454,6 +562,12 @@ export default function App() {
 
   const handleEditStudent = async (studentToEdit: Student) => {
     if (isOnline) {
+      if (useSheetsBackend) {
+        await upsertSheetsItem('students', studentToEdit);
+        setStudents((prev) => prev.map((st) => (st.id === studentToEdit.id ? studentToEdit : st)));
+        return;
+      }
+
       const path = `students/${studentToEdit.id}`;
       try {
         await setDoc(doc(db, 'students', studentToEdit.id), studentToEdit);
@@ -469,6 +583,12 @@ export default function App() {
 
   const handleDeleteStudent = async (id: string) => {
     if (isOnline) {
+      if (useSheetsBackend) {
+        await deleteSheetsItem('students', id);
+        setStudents((prev) => prev.filter((st) => st.id !== id));
+        return;
+      }
+
       const path = `students/${id}`;
       try {
         await deleteDoc(doc(db, 'students', id));
@@ -485,8 +605,30 @@ export default function App() {
   // C. Attendance Mutations (supports bulk list updating)
   const handleSaveAttendance = async (attendanceData: Omit<Attendance, 'updatedAt'>[]) => {
     const now = new Date().toISOString();
+    const fullAttendanceList: Attendance[] = attendanceData.map((item) => ({
+      ...item,
+      updatedAt: now,
+    }));
     
     if (isOnline) {
+      if (useSheetsBackend) {
+        await upsertSheetsMany('attendances', fullAttendanceList);
+
+        setAttendances((prev) => {
+          const updated = [...prev];
+          fullAttendanceList.forEach((item) => {
+            const matchIdx = updated.findIndex((idx) => idx.id === item.id);
+            if (matchIdx >= 0) {
+              updated[matchIdx] = item;
+            } else {
+              updated.push(item);
+            }
+          });
+          return updated;
+        });
+        return;
+      }
+
       for (const item of attendanceData) {
         const fullRecord: Attendance = {
           ...item,
@@ -522,6 +664,19 @@ export default function App() {
   // Refresh Attendance Trigger helper for fetching
   const handleRefreshAttendances = async () => {
     if (isOnline) {
+      if (useSheetsBackend) {
+        setLoadingAttendances(true);
+        try {
+          const data = await loadSheetsData();
+          setAttendances(data.attendances);
+        } catch (error) {
+          console.error('Làm mới điểm danh từ Google Sheets thất bại:', error);
+        } finally {
+          setLoadingAttendances(false);
+        }
+        return;
+      }
+
       setLoadingAttendances(true);
       // Wait shortly to pretend refreshing
       const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -538,6 +693,21 @@ export default function App() {
     };
 
     if (isOnline) {
+      if (useSheetsBackend) {
+        await upsertSheetsItem('payments', fullPayment);
+        setPayments((prev) => {
+          const updated = [...prev];
+          const matchIdx = updated.findIndex((p) => p.id === paymentInput.id);
+          if (matchIdx >= 0) {
+            updated[matchIdx] = fullPayment;
+          } else {
+            updated.push(fullPayment);
+          }
+          return updated;
+        });
+        return;
+      }
+
       const path = `payments/${paymentInput.id}`;
       try {
         await setDoc(doc(db, 'payments', paymentInput.id), fullPayment);
@@ -567,6 +737,12 @@ export default function App() {
     };
 
     if (isOnline) {
+      if (useSheetsBackend) {
+        await upsertSheetsItem('users', newUser);
+        setUsersList((prev) => [newUser, ...prev]);
+        return;
+      }
+
       const path = `users/${id}`;
       try {
         await setDoc(doc(db, 'users', id), newUser);
@@ -582,6 +758,12 @@ export default function App() {
 
   const handleEditUser = async (userToEdit: UserAccount) => {
     if (isOnline) {
+      if (useSheetsBackend) {
+        await upsertSheetsItem('users', userToEdit);
+        setUsersList((prev) => prev.map((u) => (u.id === userToEdit.id ? userToEdit : u)));
+        return;
+      }
+
       const path = `users/${userToEdit.id}`;
       try {
         await setDoc(doc(db, 'users', userToEdit.id), userToEdit);
@@ -597,6 +779,12 @@ export default function App() {
 
   const handleDeleteUser = async (id: string) => {
     if (isOnline) {
+      if (useSheetsBackend) {
+        await deleteSheetsItem('users', id);
+        setUsersList((prev) => prev.filter((u) => u.id !== id));
+        return;
+      }
+
       const path = `users/${id}`;
       try {
         await deleteDoc(doc(db, 'users', id));
@@ -689,8 +877,8 @@ export default function App() {
     );
   }
 
-  // Login Barrier Check
-  if (!user && !currentUserAccount && !bypassAuth) {
+  // Login Barrier Check (skip when using Sheets backend)
+  if (!useSheetsBackend && !user && !currentUserAccount && !bypassAuth) {
     return <AuthScreen onCustomLogin={handleCustomLogin} />;
   }
 
