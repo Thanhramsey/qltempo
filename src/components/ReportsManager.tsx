@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Attendance, Payment, Shift, Student } from '../types';
 import { exportToCSV } from '../utils/csvExport';
 import { BarChart3, Download, Users, Calendar, CircleDollarSign, CheckCircle2, TrendingUp, AlertTriangle, Image, X } from 'lucide-react';
-import { COURSE_FEE_VND, getStudentCycleProgress } from '../utils/tuitionCycle';
+import { getStudentCycleProgress, getTuitionCycleConfig } from '../utils/tuitionCycle';
 import { downloadStudentAttendanceRangeImage, generateStudentAttendanceRangeImage } from '../utils/canvasReceipt';
 
 interface ReportsManagerProps {
@@ -65,12 +65,18 @@ export default function ReportsManager({ students, shifts, attendances, payments
     students
       .filter((st) => st.status === 'active')
       .forEach((student) => {
-        const progress = getStudentCycleProgress(attendances, student.id);
+        const cycleConfig = getTuitionCycleConfig(student.tuitionCycleType);
+        const progress = getStudentCycleProgress(
+          attendances,
+          student.id,
+          cycleConfig.sessionsTarget,
+          cycleConfig.warningFromSession
+        );
         const key = `${student.id}_${progress.currentCycleIndex}`;
         const payment = latestPaymentByStudentCycle.get(key);
         const paidRaw = payment?.amountPaid || 0;
         const paid = Math.max(paidRaw, 0);
-        const billed = COURSE_FEE_VND;
+        const billed = payment?.totalAmount || cycleConfig.feeVnd;
         const collected = Math.min(paid, billed);
         const debt = Math.max(billed - paid, 0);
 

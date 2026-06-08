@@ -5,12 +5,12 @@ import { exportToCSV } from '../utils/csvExport';
 import { downloadStudentTuitionSnapshotImage, generateStudentTuitionSnapshotImage } from '../utils/canvasReceipt';
 import ToastMessage, { ToastType } from './ui/ToastMessage';
 import {
-  COURSE_FEE_VND,
-  COURSE_SESSION_TARGET,
+  TUITION_CYCLE_OPTIONS,
   getMaxCycleIndexFromSessions,
   getStudentCycleSessions,
   getStudentCycleProgress,
   getStudentPresentAttendances,
+  getTuitionCycleConfig,
 } from '../utils/tuitionCycle';
 
 interface TuitionManagerProps {
@@ -26,6 +26,9 @@ interface TuitionRow {
   student: Student;
   cycleIndex: number;
   cycleSessions: number;
+  sessionsTarget: number;
+  cycleFee: number;
+  cycleLabel: string;
   totalPresentSessions: number;
   isLocked: boolean;
   currentCycleIndex: number;
@@ -42,11 +45,14 @@ export default function TuitionManager({
 }: TuitionManagerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCycleFilter, setSelectedCycleFilter] = useState<string>('current');
+  const [selectedPackageFilter, setSelectedPackageFilter] = useState<string>('all');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [selectedCycleIndex, setSelectedCycleIndex] = useState<number>(1);
+  const [selectedCycleSessionsTarget, setSelectedCycleSessionsTarget] = useState<number>(24);
+  const [selectedCycleFee, setSelectedCycleFee] = useState<number>(2_400_000);
   const [amountPaid, setAmountPaid] = useState<number>(0);
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [note, setNote] = useState('');
@@ -59,13 +65,22 @@ export default function TuitionManager({
 
   const showToast = (type: ToastType, message: string) => setToast({ type, message });
 
+  const getRowBilledAmount = (row: TuitionRow) => row.payment?.totalAmount || row.cycleFee;
+  const getRowSessionsTarget = (row: TuitionRow) => row.payment?.sessionsTarget || row.sessionsTarget;
+
   const maxCycleIndex = useMemo(() => {
     let maxFromProgress = 1;
     students.forEach((student) => {
-      const progress = getStudentCycleProgress(attendances, student.id);
+      const config = getTuitionCycleConfig(student.tuitionCycleType);
+      const progress = getStudentCycleProgress(
+        attendances,
+        student.id,
+        config.sessionsTarget,
+        config.warningFromSession
+      );
       maxFromProgress = Math.max(
         maxFromProgress,
-        getMaxCycleIndexFromSessions(progress.totalPresentSessions)
+        getMaxCycleIndexFromSessions(progress.totalPresentSessions, config.sessionsTarget)
       );
     });
 
@@ -79,23 +94,42 @@ export default function TuitionManager({
   const tuitionRows: TuitionRow[] = useMemo(() => {
     return students
       .filter((student) => {
-        if (!searchQuery) return true;
+        const config = getTuitionCycleConfig(student.tuitionCycleType);
         const q = searchQuery.toLowerCase();
-        return student.name.toLowerCase().includes(q) || student.phone.includes(searchQuery);
+        const matchesSearch =
+          !searchQuery ||
+          student.name.toLowerCase().includes(q) ||
+          student.phone.includes(searchQuery);
+        const matchesPackage = selectedPackageFilter === 'all' || config.type === selectedPackageFilter;
+        return matchesSearch && matchesPackage;
       })
       .map((student) => {
-        const progress = getStudentCycleProgress(attendances, student.id);
+        const config = getTuitionCycleConfig(student.tuitionCycleType);
+        const progress = getStudentCycleProgress(
+          attendances,
+          student.id,
+          config.sessionsTarget,
+          config.warningFromSession
+        );
         const targetCycleIndex =
           selectedCycleFilter === 'current' ? progress.currentCycleIndex : Number(selectedCycleFilter);
         const payment = payments.find(
           (p) => p.studentId === student.id && p.cycleIndex === targetCycleIndex
         );
-        const { sessionsCount } = getStudentCycleSessions(attendances, student.id, targetCycleIndex);
+        const { sessionsCount } = getStudentCycleSessions(
+          attendances,
+          student.id,
+          targetCycleIndex,
+          config.sessionsTarget
+        );
 
         return {
           student,
           cycleIndex: targetCycleIndex,
           cycleSessions: sessionsCount,
+          sessionsTarget: config.sessionsTarget,
+          cycleFee: config.feeVnd,
+          cycleLabel: config.label,
           totalPresentSessions: progress.totalPresentSessions,
           isLocked: targetCycleIndex < progress.currentCycleIndex,
           currentCycleIndex: progress.currentCycleIndex,
@@ -109,16 +143,18 @@ export default function TuitionManager({
 
         return row.cycleSessions > 0 || !!row.payment;
       });
-  }, [students, attendances, payments, searchQuery, selectedCycleFilter]);
+  }, [students, attendances, payments, searchQuery, selectedCycleFilter, selectedPackageFilter]);
 
   const handleOpenPayment = (row: TuitionRow) => {
     if (row.isLocked) {
-      showToast('warning', 'Chu kỳ này đã khóa tự động sau khi đủ 24/24 buổi. Không thể ghi thu thêm.');
+      showToast('warning', `Chu kỳ này đã khóa tự động sau khi đủ ${row.sessionsTarget}/${row.sessionsTarget} buổi. Không thể ghi thu thêm.`);
       return;
     }
 
     setSelectedStudent(row.student);
     setSelectedCycleIndex(row.cycleIndex);
+    setSelectedCycleSessionsTarget(row.sessionsTarget);
+    setSelectedCycleFee(row.cycleFee);
 
     if (row.payment) {
       setCurrentPaymentId(row.payment.id);
@@ -127,7 +163,7 @@ export default function TuitionManager({
       setNote(row.payment.note || '');
     } else {
       setCurrentPaymentId(null);
-      setAmountPaid(COURSE_FEE_VND);
+      setAmountPaid(row.cycleFee);
       setPaymentDate(new Date().toISOString().split('T')[0]);
       setNote('');
     }
@@ -143,16 +179,16 @@ export default function TuitionManager({
     try {
       const payId = currentPaymentId || `${selectedStudent.id}_cycle_${selectedCycleIndex}`;
       let status: PaymentStatus = 'unpaid';
-      if (amountPaid >= COURSE_FEE_VND) status = 'paid';
+      if (amountPaid >= selectedCycleFee) status = 'paid';
       else if (amountPaid > 0) status = 'partial';
 
       await onUpdatePayment({
         id: payId,
         studentId: selectedStudent.id,
         cycleIndex: selectedCycleIndex,
-        sessionsTarget: COURSE_SESSION_TARGET,
+        sessionsTarget: selectedCycleSessionsTarget,
         amountPaid,
-        totalAmount: COURSE_FEE_VND,
+        totalAmount: selectedCycleFee,
         status,
         paymentDate,
         note,
@@ -170,8 +206,9 @@ export default function TuitionManager({
 
   const handleExportSnapshot = (row: TuitionRow) => {
     const history = getStudentPresentAttendances(attendances, row.student.id);
-    const cycleStart = (row.cycleIndex - 1) * COURSE_SESSION_TARGET;
-    const cycleSessions = history.slice(cycleStart, cycleStart + COURSE_SESSION_TARGET);
+    const sessionsTarget = getRowSessionsTarget(row);
+    const cycleStart = (row.cycleIndex - 1) * sessionsTarget;
+    const cycleSessions = history.slice(cycleStart, cycleStart + sessionsTarget);
 
     const buildShiftLabel = (shift?: Shift) => {
       if (!shift) return '';
@@ -199,10 +236,10 @@ export default function TuitionManager({
       studentName: row.student.name,
       phone: row.student.phone || '---',
       cycleIndex: row.cycleIndex,
-      sessionsTarget: COURSE_SESSION_TARGET,
+      sessionsTarget,
       currentCycleSessions: row.cycleSessions,
       totalPresentSessions: row.totalPresentSessions,
-      totalAmount: COURSE_FEE_VND,
+      totalAmount: getRowBilledAmount(row),
       amountPaid: row.payment?.amountPaid || 0,
       paymentDate: row.payment?.paymentDate || '',
       status: row.payment?.status || 'unpaid',
@@ -231,6 +268,7 @@ export default function TuitionManager({
     const headers = [
       'Học Sinh',
       'SĐT',
+      'Loại Chu Kỳ',
       'Chu Kỳ',
       'Tiến Độ Buổi',
       'Tổng Buổi Đã Học',
@@ -244,17 +282,20 @@ export default function TuitionManager({
     ];
 
     const rows = tuitionRows.map((row) => {
+      const billed = getRowBilledAmount(row);
+      const sessionsTarget = getRowSessionsTarget(row);
       const paid = row.payment?.amountPaid || 0;
-      const debt = Math.max(COURSE_FEE_VND - paid, 0);
-      const status = paid >= COURSE_FEE_VND ? 'Đã đóng đủ' : paid > 0 ? 'Đóng một phần' : 'Chưa đóng';
+      const debt = Math.max(billed - paid, 0);
+      const status = paid >= billed ? 'Đã đóng đủ' : paid > 0 ? 'Đóng một phần' : 'Chưa đóng';
 
       return [
         row.student.name,
         row.student.phone || '',
+        row.cycleLabel,
         String(row.cycleIndex),
-        `${row.cycleSessions}/${COURSE_SESSION_TARGET}`,
+        `${row.cycleSessions}/${sessionsTarget}`,
         String(row.totalPresentSessions),
-        `${COURSE_FEE_VND.toLocaleString()} đ`,
+        `${billed.toLocaleString()} đ`,
         `${paid.toLocaleString()} đ`,
         `${debt.toLocaleString()} đ`,
         status,
@@ -264,7 +305,7 @@ export default function TuitionManager({
       ];
     });
 
-    exportToCSV('Bao_Cao_Hoc_Phi_Theo_Chu_Ky_24_Buoi', headers, rows);
+    exportToCSV('Bao_Cao_Hoc_Phi_Theo_Chu_Ky', headers, rows);
   };
 
   let totalBilled = 0;
@@ -273,11 +314,12 @@ export default function TuitionManager({
   let studentsPaidCount = 0;
 
   tuitionRows.forEach((row) => {
+    const billed = getRowBilledAmount(row);
     const paid = row.payment ? row.payment.amountPaid : 0;
-    totalBilled += COURSE_FEE_VND;
+    totalBilled += billed;
     totalReceived += paid;
-    totalDue += Math.max(COURSE_FEE_VND - paid, 0);
-    if (row.payment?.status === 'paid' || paid >= COURSE_FEE_VND) studentsPaidCount++;
+    totalDue += Math.max(billed - paid, 0);
+    if (row.payment?.status === 'paid' || paid >= billed) studentsPaidCount++;
   });
 
   return (
@@ -288,13 +330,13 @@ export default function TuitionManager({
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <CircleDollarSign className="text-indigo-600" size={24} />
-            Học Phí Theo Buổi Học (24 buổi = 1 khóa)
+            Học Phí Theo Chu Kỳ Buổi Học
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Học phí tính theo chu kỳ 24 buổi cho mỗi học sinh, không tính theo ca học.
+            Học phí tính theo chu kỳ đã gán trên hồ sơ học sinh: 24 buổi/2.400.000đ hoặc 8 buổi/800.000đ.
           </p>
           <p className="text-xs text-amber-600 mt-1 font-semibold">
-            Rule tự động: chu kỳ cũ sẽ khóa khi học sinh đạt đủ 24/24 buổi, hệ thống mở chu kỳ mới ngay lập tức.
+            Rule tự động: chu kỳ cũ sẽ khóa khi học sinh đạt đủ số buổi của gói, hệ thống mở chu kỳ mới ngay lập tức.
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
@@ -308,7 +350,7 @@ export default function TuitionManager({
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
             Tìm học sinh
@@ -343,10 +385,28 @@ export default function TuitionManager({
           </select>
         </div>
 
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+            Lọc theo gói
+          </label>
+          <select
+            value={selectedPackageFilter}
+            onChange={(e) => setSelectedPackageFilter(e.target.value)}
+            className="tempo-select w-full px-3.5 py-2 rounded-xl text-slate-700 text-sm font-medium h-9.5 bg-white"
+          >
+            <option value="all">Tất cả gói</option>
+            {TUITION_CYCLE_OPTIONS.map((option) => (
+              <option key={option.type} value={option.type}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 flex items-center justify-between">
           <div>
-            <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Mức học phí cố định mỗi khóa</div>
-            <div className="text-lg font-bold text-indigo-800">{COURSE_FEE_VND.toLocaleString()} đ / {COURSE_SESSION_TARGET} buổi</div>
+            <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Các gói chu kỳ đang hỗ trợ</div>
+            <div className="text-sm font-bold text-indigo-800">{TUITION_CYCLE_OPTIONS.map((option) => option.label).join(' | ')}</div>
           </div>
           {loadingPayments && <Loader2 size={18} className="animate-spin text-indigo-500" />}
         </div>
@@ -385,10 +445,13 @@ export default function TuitionManager({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[950px] text-left border-collapse">
+            <table className="w-full min-w-[1120px] text-left border-collapse">
               <thead>
                 <tr className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 border-b border-indigo-300 text-white text-xs font-bold uppercase tracking-wider shadow-sm">
+                  <th className="px-4 py-4 w-[70px] text-center">STT</th>
                   <th className="px-6 py-4">Học Sinh</th>
+                  <th className="px-6 py-4 text-center">Trạng thái HS</th>
+                  <th className="px-6 py-4">Loại chu kỳ</th>
                   <th className="px-6 py-4">Chu kỳ hiện tại</th>
                   <th className="px-6 py-4">Tiến độ buổi</th>
                   <th className="px-6 py-4 text-center">Khóa/Mở</th>
@@ -397,15 +460,17 @@ export default function TuitionManager({
                   <th className="px-6 py-4 text-right">Còn nợ</th>
                   <th className="px-6 py-4 text-center">Trạng Thái</th>
                   <th className="px-6 py-4">Ngày giao dịch</th>
-                  <th className="px-6 py-4 text-right">Hành động</th>
+                  <th className="px-6 py-4 text-right sticky right-0 z-30 bg-cyan-500 min-w-[170px] shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.5)]">Hành động</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-700 text-left">
-                {tuitionRows.map((row) => {
+                {tuitionRows.map((row, index) => {
+                  const billed = getRowBilledAmount(row);
+                  const sessionsTarget = getRowSessionsTarget(row);
                   const paid = row.payment ? row.payment.amountPaid : 0;
-                  const debt = Math.max(COURSE_FEE_VND - paid, 0);
-                  const isPaidEnough = paid >= COURSE_FEE_VND;
-                  const isPartial = paid > 0 && paid < COURSE_FEE_VND;
+                  const debt = Math.max(billed - paid, 0);
+                  const isPaidEnough = paid >= billed;
+                  const isPartial = paid > 0 && paid < billed;
 
                   let paymentButtonClass =
                     'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white hover:from-indigo-600 hover:to-indigo-700 shadow-indigo-200 border border-indigo-300';
@@ -423,18 +488,37 @@ export default function TuitionManager({
 
                   return (
                     <tr key={`${row.student.id}_${row.cycleIndex}`} className="hover:bg-slate-50/40 transition-colors">
+                      <td className="px-4 py-4 text-center">
+                        <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700 text-xs font-bold px-1.5">
+                          {index + 1}
+                        </span>
+                      </td>
                       <td className="px-6 py-4">
                         <div className="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-800 font-extrabold text-sm shadow-xs">
                           {row.student.name}
                         </div>
                         <div className="text-3xs text-slate-400 font-mono mt-0.5">SĐT: {row.student.phone}</div>
                       </td>
+                      <td className="px-6 py-4 text-center">
+                        {row.student.status === 'active' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                            Đang học
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold bg-slate-100 text-slate-600 rounded-full border border-slate-200">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                            Đã nghỉ
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-slate-700">{row.cycleLabel}</td>
                       <td className="px-6 py-4">
                         <span className="font-medium text-slate-700 block">Chu kỳ {row.cycleIndex}</span>
                         <span className="text-3xs text-slate-400 block mt-0.5">Chu kỳ đang mở: {row.currentCycleIndex}</span>
                       </td>
                       <td className="px-6 py-4 font-semibold text-indigo-700">
-                        {row.cycleSessions}/{COURSE_SESSION_TARGET}
+                        {row.cycleSessions}/{sessionsTarget}
                       </td>
                       <td className="px-6 py-4 text-center">
                         {row.isLocked ? (
@@ -448,7 +532,7 @@ export default function TuitionManager({
                         )}
                       </td>
                       <td className="px-6 py-4 text-right font-bold text-slate-700">
-                        {COURSE_FEE_VND.toLocaleString()} đ
+                        {billed.toLocaleString()} đ
                       </td>
                       <td className="px-6 py-4 text-right font-bold text-emerald-600 bg-emerald-50/10">
                         {paid.toLocaleString()} đ
@@ -474,7 +558,7 @@ export default function TuitionManager({
                       <td className="px-6 py-4 text-xs font-mono text-slate-500">
                         {row.payment?.paymentDate ? row.payment.paymentDate.split('-').reverse().join('/') : '---'}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right sticky right-0 z-20 bg-white min-w-[170px] shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.2)]">
                         <div className="flex justify-end gap-1.5">
                           <button
                             onClick={() => handleOpenPayment(row)}
@@ -528,7 +612,7 @@ export default function TuitionManager({
                 <div className="text-xs font-bold text-emerald-800 uppercase tracking-wide">Thông Tin Đóng Học Phí</div>
                 <div className="font-extrabold text-slate-800 text-base mt-1">{selectedStudent.name}</div>
                 <div className="text-xs text-slate-500 mt-1">Chu kỳ: <span className="font-semibold text-slate-700">{selectedCycleIndex}</span></div>
-                <div className="text-xs text-slate-500">Mức thu: <span className="font-bold text-indigo-600">{COURSE_FEE_VND.toLocaleString()}đ</span> / {COURSE_SESSION_TARGET} buổi</div>
+                <div className="text-xs text-slate-500">Mức thu: <span className="font-bold text-indigo-600">{selectedCycleFee.toLocaleString()}đ</span> / {selectedCycleSessionsTarget} buổi</div>
               </div>
 
               <div>
@@ -539,7 +623,7 @@ export default function TuitionManager({
                   type="number"
                   required
                   min="0"
-                  max={COURSE_FEE_VND * 5}
+                  max={selectedCycleFee * 5}
                   value={amountPaid}
                   onChange={(e) => setAmountPaid(Number(e.target.value))}
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500 font-bold"
@@ -547,10 +631,10 @@ export default function TuitionManager({
                 <div className="flex justify-between mt-1 text-2xs font-semibold">
                   <button
                     type="button"
-                    onClick={() => setAmountPaid(COURSE_FEE_VND)}
+                    onClick={() => setAmountPaid(selectedCycleFee)}
                     className="text-indigo-600 hover:underline cursor-pointer"
                   >
-                    Thu đủ ({COURSE_FEE_VND.toLocaleString()}đ)
+                    Thu đủ ({selectedCycleFee.toLocaleString()}đ)
                   </button>
                   <button
                     type="button"

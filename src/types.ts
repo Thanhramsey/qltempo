@@ -14,6 +14,7 @@ export interface Student {
   phone: string;
   email?: string;
   birthDate?: string;
+  tuitionCycleType?: TuitionCycleType; // optional for backward compatibility with older records
   shifts: string[];    // IDs of shifts this student is in
   status: 'active' | 'inactive';
   joinDate: string;
@@ -33,6 +34,7 @@ export interface Attendance {
 }
 
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
+export type TuitionCycleType = 'cycle_24' | 'cycle_8';
 
 export interface UserAccount {
   id: string;
@@ -46,8 +48,8 @@ export interface UserAccount {
 export interface Payment {
   id: string;
   studentId: string;
-  cycleIndex: number;  // 1-based cycle index, each cycle has 24 sessions
-  sessionsTarget: number;
+  cycleIndex: number;  // 1-based cycle index
+  sessionsTarget: number; // per student's cycle package (e.g. 24 or 8)
   shiftId?: string;    // Legacy field
   month?: string;      // Legacy field
   amountPaid: number;

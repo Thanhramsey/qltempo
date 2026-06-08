@@ -18,6 +18,30 @@ const quickSteps = [
   'Dùng Báo cáo để xuất file thống kê nhanh theo tình hình vận hành.',
 ];
 
+const tuitionExamples = [
+  {
+    studentName: 'Nguyễn Minh Khang',
+    cycleRule: '24 buổi / 2.400.000đ',
+    progress: 'Chu kỳ 2: 17/24 buổi',
+    payment: 'Đã đóng 1.800.000đ',
+    status: 'Còn thiếu 600.000đ',
+  },
+  {
+    studentName: 'Lê Phương Anh',
+    cycleRule: '8 buổi / 800.000đ',
+    progress: 'Chu kỳ 1: 8/8 buổi',
+    payment: 'Đã đóng 800.000đ',
+    status: 'Đủ học phí, tự mở chu kỳ 2',
+  },
+  {
+    studentName: 'Trần Gia Bảo',
+    cycleRule: '8 buổi / 800.000đ',
+    progress: 'Chu kỳ 3: 5/8 buổi',
+    payment: 'Đã đóng 300.000đ',
+    status: 'Còn thiếu 500.000đ',
+  },
+];
+
 const sections = [
   {
     id: 'dashboard',
@@ -146,6 +170,38 @@ export default function UsageGuide() {
             </div>
           );
         })}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <h3 className="text-base font-bold text-slate-800">Ví dụ minh họa theo chu kỳ học phí</h3>
+        <p className="text-sm text-slate-500 mt-1.5">
+          Ví dụ nghiệp vụ tham khảo khi trung tâm vận hành song song nhiều gói chu kỳ như 24 buổi/2.400.000đ và 8 buổi/800.000đ.
+        </p>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm border border-slate-200 rounded-xl overflow-hidden">
+            <thead className="bg-slate-50 text-slate-600">
+              <tr>
+                <th className="text-left px-3 py-2.5 font-semibold border-b border-slate-200">Học sinh</th>
+                <th className="text-left px-3 py-2.5 font-semibold border-b border-slate-200">Quy tắc chu kỳ</th>
+                <th className="text-left px-3 py-2.5 font-semibold border-b border-slate-200">Tiến độ</th>
+                <th className="text-left px-3 py-2.5 font-semibold border-b border-slate-200">Đã thu</th>
+                <th className="text-left px-3 py-2.5 font-semibold border-b border-slate-200">Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tuitionExamples.map((item) => (
+                <tr key={item.studentName} className="odd:bg-white even:bg-slate-50/40 text-slate-700">
+                  <td className="px-3 py-2.5 border-b border-slate-100 font-medium">{item.studentName}</td>
+                  <td className="px-3 py-2.5 border-b border-slate-100">{item.cycleRule}</td>
+                  <td className="px-3 py-2.5 border-b border-slate-100">{item.progress}</td>
+                  <td className="px-3 py-2.5 border-b border-slate-100">{item.payment}</td>
+                  <td className="px-3 py-2.5 border-b border-slate-100">{item.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

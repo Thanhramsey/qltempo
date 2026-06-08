@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Student, Shift, Attendance } from '../types';
+import { Student, Shift, Attendance, TuitionCycleType } from '../types';
 import {
   Users,
   Plus,
@@ -29,7 +29,12 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { exportStudentsList } from '../utils/csvExport';
-import { COURSE_SESSION_TARGET, getStudentCycleProgress } from '../utils/tuitionCycle';
+import {
+  DEFAULT_TUITION_CYCLE_TYPE,
+  TUITION_CYCLE_OPTIONS,
+  getStudentCycleProgress,
+  getTuitionCycleConfig,
+} from '../utils/tuitionCycle';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import ToastMessage, { ToastType } from './ui/ToastMessage';
@@ -187,6 +192,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [birthDate, setBirthDate] = useState('');
+  const [tuitionCycleType, setTuitionCycleType] = useState<TuitionCycleType>(DEFAULT_TUITION_CYCLE_TYPE);
   const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
   const [joinDate, setJoinDate] = useState(new Date().toISOString().split('T')[0]);
@@ -259,6 +265,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
     setPhone('');
     setEmail('');
     setBirthDate('');
+    setTuitionCycleType(DEFAULT_TUITION_CYCLE_TYPE);
     setSelectedShifts([]);
     setStatus('active');
     setJoinDate(new Date().toISOString().split('T')[0]);
@@ -273,6 +280,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
     setPhone(student.phone);
     setEmail(student.email || '');
     setBirthDate(student.birthDate || '');
+    setTuitionCycleType(student.tuitionCycleType || DEFAULT_TUITION_CYCLE_TYPE);
     setSelectedShifts(student.shifts || []);
     setStatus(student.status);
     setJoinDate(student.joinDate);
@@ -319,6 +327,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
           phone,
           email,
           birthDate,
+          tuitionCycleType,
           shifts: selectedShifts,
           status,
           joinDate
@@ -329,6 +338,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
           phone,
           email,
           birthDate,
+          tuitionCycleType,
           shifts: selectedShifts,
           status,
           joinDate
@@ -608,26 +618,34 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left border-collapse">
+            <table className="w-full min-w-[1140px] text-left border-collapse">
               <thead>
                 <tr className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 border-b border-indigo-300 text-white text-xs font-bold uppercase tracking-wider shadow-sm">
+                  <th className="px-4 py-4 w-[70px] text-center">STT</th>
                   <th className="px-6 py-4 min-w-[250px]">Họ và Tên</th>
                   <th className="px-6 py-4">Liên hệ (SĐT / Email)</th>
                   <th className="px-6 py-4">Ngày sinh</th>
                   <th className="px-6 py-4">Lớp chính - Ca đăng ký</th>
-                  <th className="px-6 py-4">Tiến độ 24 buổi</th>
+                  <th className="px-6 py-4">Loại chu kỳ</th>
+                  <th className="px-6 py-4">Tiến độ chu kỳ</th>
                   <th className="px-6 py-4">Ngày nhập học</th>
                   <th className="px-6 py-4">Trạng thái</th>
-                  <th className="px-6 py-4 text-right">Tác vụ</th>
+                  <th className="px-6 py-4 text-right sticky right-0 z-30 bg-cyan-500 min-w-[120px] shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.5)]">Tác vụ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
-                {filteredStudents.map((student) => {
+                {filteredStudents.map((student, index) => {
                   const studentShifts = (student.shifts || []).map(shId => {
                     return shifts.find(s => s.id === shId);
                   }).filter(Boolean);
-                  const progress = getStudentCycleProgress(attendances, student.id);
-                  const progressPercent = Math.round((progress.currentCycleSessions / COURSE_SESSION_TARGET) * 100);
+                  const cycleConfig = getTuitionCycleConfig(student.tuitionCycleType);
+                  const progress = getStudentCycleProgress(
+                    attendances,
+                    student.id,
+                    cycleConfig.sessionsTarget,
+                    cycleConfig.warningFromSession
+                  );
+                  const progressPercent = Math.round((progress.currentCycleSessions / cycleConfig.sessionsTarget) * 100);
                   const birthdayToday = isTodayBirthday(student.birthDate);
 
                   return (
@@ -639,6 +657,11 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                           : 'hover:bg-slate-50/50'
                       }`}
                     >
+                      <td className="px-4 py-4 text-center">
+                        <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-slate-100 text-slate-700 text-xs font-bold px-1.5">
+                          {index + 1}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 min-w-[250px]">
                         <div
                           title={student.name}
@@ -694,6 +717,11 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                           )}
                         </div>
                       </td>
+                      <td className="px-6 py-4 min-w-[180px]">
+                        <span className="inline-flex items-center rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">
+                          {cycleConfig.label}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 min-w-[210px]">
                         <div className={`rounded-lg border px-3 py-2 ${
                           progress.isNearCycleEnd
@@ -703,7 +731,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                           <div className="flex items-center justify-between text-xs mb-1">
                             <span className="font-semibold text-slate-600">Chu kỳ {progress.currentCycleIndex}</span>
                             <span className={`font-bold ${progress.isNearCycleEnd ? 'text-amber-700' : 'text-indigo-700'}`}>
-                              {progress.currentCycleSessions}/{COURSE_SESSION_TARGET}
+                              {progress.currentCycleSessions}/{cycleConfig.sessionsTarget}
                             </span>
                           </div>
                           <div className="h-1.5 rounded-full bg-white overflow-hidden">
@@ -735,7 +763,11 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td
+                        className={`px-6 py-4 text-right sticky right-0 z-20 min-w-[120px] shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.2)] ${
+                          birthdayToday ? 'bg-amber-50/70' : 'bg-white'
+                        }`}
+                      >
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => handleOpenEdit(student)}
@@ -897,6 +929,23 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                     </span>
                   </label>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Loại chu kỳ học phí
+                </label>
+                <select
+                  value={tuitionCycleType}
+                  onChange={(e) => setTuitionCycleType(e.target.value as TuitionCycleType)}
+                  className="tempo-select w-full px-3.5 py-2 rounded-xl text-slate-700 text-sm font-medium bg-white"
+                >
+                  {TUITION_CYCLE_OPTIONS.map((option) => (
+                    <option key={option.type} value={option.type}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

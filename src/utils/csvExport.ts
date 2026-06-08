@@ -27,7 +27,7 @@ export function exportToCSV(filename: string, headers: string[], rows: string[][
  * Export student list helper
  */
 export function exportStudentsList(students: any[], shifts: any[]) {
-  const headers = ["Mã Học Sinh", "Họ Tên", "Số Điện Thoại", "Email", "Ngày Sinh", "Ca Học", "Trạng Thái", "Ngày Nhập Học"];
+  const headers = ["Mã Học Sinh", "Họ Tên", "Số Điện Thoại", "Email", "Ngày Sinh", "Loại Chu Kỳ", "Ca Học", "Trạng Thái", "Ngày Nhập Học"];
   
   const rows = students.map(student => {
     const studentShifts = (student.shifts || [])
@@ -37,12 +37,15 @@ export function exportStudentsList(students: any[], shifts: any[]) {
       })
       .join("; ");
       
+    const cycleLabel = student.tuitionCycleType === 'cycle_8' ? '800.000đ / 8 buổi' : '2.400.000đ / 24 buổi';
+
     return [
       student.id,
       student.name,
       student.phone || "",
       student.email || "",
       student.birthDate || "",
+      cycleLabel,
       studentShifts,
       student.status === "active" ? "Đang học" : "Nghỉ học",
       student.joinDate || ""

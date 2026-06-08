@@ -208,9 +208,29 @@ export function generateStudentTuitionSnapshotImage(data: {
   note: string;
   sessions: Array<{ date: string; shiftLabel: string }>;
 }): string {
+  const sessionsToRender = data.sessions.slice(0, data.sessionsTarget);
+  const tableX = 50;
+  const tableY = 485;
+  const tableWidth = 800;
+  const tableHeaderHeight = 34;
+  const rowHeight = 28;
+  const sttColWidth = 60;
+  const dateColWidth = 120;
+  const rowCount = Math.max(sessionsToRender.length, 1);
+  const tableHeight = tableHeaderHeight + rowCount * rowHeight;
+  const tableBottomY = tableY + tableHeight;
+  const badgeY = tableBottomY + 70;
+  const statusLineY = badgeY + 10;
+  const noteLineY = statusLineY + 25;
+  const footerY = noteLineY + 30;
+
+  const panelBottomY = footerY + 20;
+  const sessionsPanelHeight = panelBottomY - 400;
+  const dynamicCanvasHeight = Math.max(1200, panelBottomY + 40);
+
   const canvas = document.createElement('canvas');
   canvas.width = 900;
-  canvas.height = 1200;
+  canvas.height = dynamicCanvasHeight;
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
 
@@ -227,7 +247,7 @@ export function generateStudentTuitionSnapshotImage(data: {
 
   ctx.fillStyle = 'rgba(16, 185, 129, 0.1)';
   ctx.beginPath();
-  ctx.arc(120, 1100, 260, 0, Math.PI * 2);
+  ctx.arc(120, canvas.height - 100, 260, 0, Math.PI * 2);
   ctx.fill();
 
   const head = ctx.createLinearGradient(0, 0, canvas.width, 0);
@@ -272,8 +292,8 @@ export function generateStudentTuitionSnapshotImage(data: {
 
   ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = '#e2e8f0';
-  ctx.fillRect(30, 400, 840, 760);
-  ctx.strokeRect(30, 400, 840, 760);
+  ctx.fillRect(30, 400, 840, sessionsPanelHeight);
+  ctx.strokeRect(30, 400, 840, sessionsPanelHeight);
 
   ctx.fillStyle = '#1e3a8a';
   ctx.font = 'bold 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
@@ -281,26 +301,14 @@ export function generateStudentTuitionSnapshotImage(data: {
 
   ctx.font = '14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
   ctx.fillStyle = '#64748b';
-  ctx.fillText('Danh sách theo chu kỳ hiện tại, tối đa 24 buổi', 50, 465);
-
-  const sessionsToRender = data.sessions.slice(0, 24);
-  const tableX = 50;
-  const tableY = 485;
-  const tableWidth = 800;
-  const tableHeaderHeight = 34;
-  const rowHeight = 28;
-  const sttColWidth = 60;
-  const dateColWidth = 120;
-  const tableBottomLimit = 1070;
-  const maxVisibleRows = Math.max(0, Math.floor((tableBottomLimit - (tableY + tableHeaderHeight)) / rowHeight));
-  const visibleSessions = sessionsToRender.slice(0, maxVisibleRows);
+  ctx.fillText(`Danh sách theo chu kỳ hiện tại, tối đa ${data.sessionsTarget} buổi`, 50, 465);
 
   // Table frame
   ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = '#dbe4f3';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.roundRect(tableX, tableY, tableWidth, tableHeaderHeight + Math.max(visibleSessions.length, 1) * rowHeight, 10);
+  ctx.roundRect(tableX, tableY, tableWidth, tableHeight, 10);
   ctx.fill();
   ctx.stroke();
 
@@ -323,7 +331,6 @@ export function generateStudentTuitionSnapshotImage(data: {
   // Vertical separators
   const col1X = tableX + sttColWidth;
   const col2X = tableX + sttColWidth + dateColWidth;
-  const tableBottomY = tableY + tableHeaderHeight + Math.max(visibleSessions.length, 1) * rowHeight;
   ctx.strokeStyle = '#e2e8f0';
   ctx.beginPath();
   ctx.moveTo(col1X, tableY);
@@ -334,7 +341,7 @@ export function generateStudentTuitionSnapshotImage(data: {
 
   // Body rows
   ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  visibleSessions.forEach((session, idx) => {
+  sessionsToRender.forEach((session, idx) => {
     const rowTop = tableY + tableHeaderHeight + idx * rowHeight;
     const rowCenterY = rowTop + 19;
 
@@ -355,21 +362,13 @@ export function generateStudentTuitionSnapshotImage(data: {
     ctx.fillText(session.shiftLabel, tableX + sttColWidth + dateColWidth + 18, rowCenterY);
   });
 
-  if (visibleSessions.length === 0) {
+  if (sessionsToRender.length === 0) {
     ctx.fillStyle = '#94a3b8';
     ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.fillText('Chưa có buổi học có mặt nào trong chu kỳ này.', tableX + 18, tableY + tableHeaderHeight + 19);
   }
 
-  if (sessionsToRender.length > visibleSessions.length) {
-    const hiddenCount = sessionsToRender.length - visibleSessions.length;
-    ctx.fillStyle = '#64748b';
-    ctx.font = '12px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillText(`... còn ${hiddenCount} buổi, vui lòng xuất bản mở rộng nếu cần`, tableX + 10, tableBottomY + 18);
-  }
-
   const badgeX = 640;
-  const badgeY = 1110;
   const paidEnough = debt === 0;
   ctx.fillStyle = paidEnough ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.18)';
   ctx.strokeStyle = paidEnough ? '#10b981' : '#f59e0b';
@@ -384,14 +383,14 @@ export function generateStudentTuitionSnapshotImage(data: {
 
   ctx.fillStyle = '#64748b';
   ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillText(`Trạng thái học phí: ${data.status}`, 50, 1120);
-  ctx.fillText(`Ngày đóng: ${data.paymentDate ? data.paymentDate.split('-').reverse().join('/') : '---'}`, 290, 1120);
-  ctx.fillText(`Ghi chú: ${data.note || '---'}`, 50, 1145);
+  ctx.fillText(`Trạng thái học phí: ${data.status}`, 50, statusLineY);
+  ctx.fillText(`Ngày đóng: ${data.paymentDate ? data.paymentDate.split('-').reverse().join('/') : '---'}`, 290, statusLineY);
+  ctx.fillText(`Ghi chú: ${data.note || '---'}`, 50, noteLineY);
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#94a3b8';
   ctx.font = '11px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillText('Trung tâm Piano - Học tập đều đặn, tiến bộ mỗi ngày', canvas.width / 2, 1175);
+  ctx.fillText('Trung tâm Piano - Học tập đều đặn, tiến bộ mỗi ngày', canvas.width / 2, footerY);
 
   const dataURL = canvas.toDataURL('image/png');
   return dataURL;
