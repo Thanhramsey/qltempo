@@ -185,6 +185,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedShiftDayFilter, setSelectedShiftDayFilter] = useState<string>('all');
   const [selectedShiftFilter, setSelectedShiftFilter] = useState<string>('all');
+  const [selectedPackageFilter, setSelectedPackageFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   // Form states
@@ -378,6 +379,10 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       student.phone.includes(searchQuery) ||
       (student.email && student.email.toLowerCase().includes(searchQuery.toLowerCase()));
 
+    const matchesPackage =
+      selectedPackageFilter === 'all' ||
+      getTuitionCycleConfig(student.tuitionCycleType).type === selectedPackageFilter;
+
     const matchesShift = (() => {
       if (!student.shifts || student.shifts.length === 0) return false;
 
@@ -399,7 +404,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       statusFilter === 'all' ||
       student.status === statusFilter;
 
-    return matchesSearch && matchesShift && matchesStatus;
+    return matchesSearch && matchesShift && matchesPackage && matchesStatus;
   });
 
   const handleExport = () => {
@@ -541,7 +546,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       </div>
 
       {/* Filters & Search */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         {/* Search Input */}
         <div className="relative">
           <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
@@ -588,6 +593,28 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
             {shiftsForListFilter.map(sh => (
               <option key={sh.id} value={sh.id}>{sh.name} ({sh.course})</option>
             ))}
+          </select>
+        </div>
+
+        {/* Filter by Package */}
+        <div className="relative">
+          <BookOpen className="absolute left-3 top-2.5 text-slate-400" size={16} />
+          <select
+            value={selectedPackageFilter}
+            onChange={(e) => setSelectedPackageFilter(e.target.value)}
+            className="tempo-select w-full pl-10 py-2 rounded-xl text-slate-700 text-sm font-medium bg-white cursor-pointer"
+          >
+            <option value="all">Tất cả gói học phí</option>
+            {TUITION_CYCLE_OPTIONS.map((option) => {
+              const packageCount = students.filter(
+                (student) => getTuitionCycleConfig(student.tuitionCycleType).type === option.type
+              ).length;
+              return (
+                <option key={option.type} value={option.type}>
+                  {option.label} ({packageCount} học sinh)
+                </option>
+              );
+            })}
           </select>
         </div>
 
