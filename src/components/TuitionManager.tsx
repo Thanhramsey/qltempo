@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Shift, Student, Payment, PaymentStatus, Attendance } from '../types';
 import { CircleDollarSign, Edit3, Image, Download, Search, CheckCircle, AlertTriangle, Coins, X, Loader2 } from 'lucide-react';
 import { exportToCSV } from '../utils/csvExport';
@@ -35,6 +35,48 @@ interface TuitionRow {
   payment?: Payment;
 }
 
+interface SnapshotDisplayFields {
+  showPhone: boolean;
+  showCycleProgress: boolean;
+  showTuitionAmounts: boolean;
+  showStatus: boolean;
+  showPaymentDate: boolean;
+  showNote: boolean;
+  showFooter: boolean;
+}
+
+interface SnapshotColorOptions {
+  textColor: string;
+  tableHeaderColor: string;
+  reportHeaderBgColor: string;
+}
+
+const DEFAULT_SNAPSHOT_DISPLAY_FIELDS: SnapshotDisplayFields = {
+  showPhone: true,
+  showCycleProgress: true,
+  showTuitionAmounts: true,
+  showStatus: true,
+  showPaymentDate: true,
+  showNote: true,
+  showFooter: true,
+};
+
+const SNAPSHOT_FIELD_OPTIONS: Array<{ key: keyof SnapshotDisplayFields; label: string }> = [
+  { key: 'showPhone', label: 'Hiện số điện thoại' },
+  { key: 'showCycleProgress', label: 'Hiện chu kỳ và tiến độ buổi' },
+  { key: 'showTuitionAmounts', label: 'Hiện số tiền học phí/đã đóng/còn nợ' },
+  { key: 'showStatus', label: 'Hiện trạng thái học phí' },
+  { key: 'showPaymentDate', label: 'Hiện ngày đóng' },
+  { key: 'showNote', label: 'Hiện ghi chú' },
+  { key: 'showFooter', label: 'Hiện dòng chân trang' },
+];
+
+const DEFAULT_SNAPSHOT_COLORS: SnapshotColorOptions = {
+  textColor: '#0f172a',
+  tableHeaderColor: '#1d4ed8',
+  reportHeaderBgColor: '#1d4ed8',
+};
+
 export default function TuitionManager({
   shifts,
   students,
@@ -61,6 +103,11 @@ export default function TuitionManager({
   const [previewImageUrl, setPreviewImageUrl] = useState<string>('');
   const [previewFileName, setPreviewFileName] = useState<string>('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewRow, setPreviewRow] = useState<TuitionRow | null>(null);
+  const [snapshotDisplayFields, setSnapshotDisplayFields] = useState<SnapshotDisplayFields>(DEFAULT_SNAPSHOT_DISPLAY_FIELDS);
+  const [snapshotColors, setSnapshotColors] = useState<SnapshotColorOptions>(DEFAULT_SNAPSHOT_COLORS);
+  const [snapshotExtraLineInput, setSnapshotExtraLineInput] = useState('');
+  const [snapshotExtraLines, setSnapshotExtraLines] = useState<string[]>([]);
   const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
 
   const showToast = (type: ToastType, message: string) => setToast({ type, message });
@@ -204,7 +251,7 @@ export default function TuitionManager({
     }
   };
 
-  const handleExportSnapshot = (row: TuitionRow) => {
+  const refreshSnapshotPreview = (row: TuitionRow) => {
     const history = getStudentPresentAttendances(attendances, row.student.id);
     const sessionsTarget = getRowSessionsTarget(row);
     const cycleStart = (row.cycleIndex - 1) * sessionsTarget;
@@ -244,6 +291,11 @@ export default function TuitionManager({
       paymentDate: row.payment?.paymentDate || '',
       status: row.payment?.status || 'unpaid',
       note: row.payment?.note || '',
+      customization: {
+        ...snapshotDisplayFields,
+        ...snapshotColors,
+        extraLines: snapshotExtraLines,
+      },
       sessions: cycleSessions.map((session) => {
         const shift = shifts.find((sh) => sh.id === session.shiftId);
         const shiftLabel = shift ? buildShiftLabel(shift) : session.shiftId;
@@ -257,7 +309,58 @@ export default function TuitionManager({
 
     setPreviewImageUrl(imageUrl);
     setPreviewFileName(`BaoCao_${row.student.name.replace(/\s+/g, '_')}_chu_ky_${row.cycleIndex}.png`);
+  };
+
+  useEffect(() => {
+    if (!isPreviewOpen || !previewRow) return;
+    const timer = window.setTimeout(() => {
+      refreshSnapshotPreview(previewRow);
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [isPreviewOpen, previewRow, snapshotDisplayFields, snapshotExtraLines, snapshotColors]);
+
+  const handleExportSnapshot = (row: TuitionRow) => {
+    setPreviewRow(row);
+    refreshSnapshotPreview(row);
     setIsPreviewOpen(true);
+  };
+
+  const handleClosePreview = () => {
+    setIsPreviewOpen(false);
+    setPreviewRow(null);
+  };
+
+  const handleToggleSnapshotField = (field: keyof SnapshotDisplayFields) => {
+    setSnapshotDisplayFields((prev: SnapshotDisplayFields) => ({
+      ...prev,
+      [field]: !prev[field],
+    }));
+  };
+
+  const handleAddSnapshotExtraLine = () => {
+    const line = snapshotExtraLineInput.trim();
+    if (!line) return;
+    setSnapshotExtraLines((prev: string[]) => [...prev, line]);
+    setSnapshotExtraLineInput('');
+  };
+
+  const handleRemoveSnapshotExtraLine = (lineIndex: number) => {
+    setSnapshotExtraLines((prev: string[]) => prev.filter((_: string, index: number) => index !== lineIndex));
+  };
+
+  const handleResetSnapshotCustomization = () => {
+    setSnapshotDisplayFields(DEFAULT_SNAPSHOT_DISPLAY_FIELDS);
+    setSnapshotColors(DEFAULT_SNAPSHOT_COLORS);
+    setSnapshotExtraLineInput('');
+    setSnapshotExtraLines([]);
+  };
+
+  const handleColorChange = (field: keyof SnapshotColorOptions, value: string) => {
+    setSnapshotColors((prev: SnapshotColorOptions) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
   const handleDownloadPreview = () => {
@@ -703,7 +806,7 @@ export default function TuitionManager({
                 Xem Trước Ảnh Báo Cáo
               </h3>
               <button
-                onClick={() => setIsPreviewOpen(false)}
+                onClick={handleClosePreview}
                 className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
               >
                 <X size={18} />
@@ -711,6 +814,117 @@ export default function TuitionManager({
             </div>
 
             <div className="p-4 bg-slate-50 max-h-[75vh] overflow-auto">
+              <div className="bg-white border border-slate-200 rounded-xl p-4 mb-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                  <div>
+                    <div className="text-sm font-bold text-slate-800">Tùy biến nội dung hiển thị</div>
+                    <div className="text-xs text-slate-500">Bật/tắt mục muốn hiện trên ảnh và thêm nội dung tùy chọn.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleResetSnapshotCustomization}
+                    className="px-3 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  >
+                    Đặt lại mặc định
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                  {SNAPSHOT_FIELD_OPTIONS.map((field) => (
+                    <label
+                      key={field.key}
+                      className="flex items-center gap-2 text-sm text-slate-700 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={snapshotDisplayFields[field.key]}
+                        onChange={() => handleToggleSnapshotField(field.key)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span>{field.label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="border-t border-slate-100 pt-3">
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    Thêm nội dung tự nhập (hiện ở mục Thông tin học sinh)
+                  </label>
+                  <div className="flex flex-col md:flex-row gap-2">
+                    <input
+                      type="text"
+                      value={snapshotExtraLineInput}
+                      onChange={(e) => setSnapshotExtraLineInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddSnapshotExtraLine();
+                        }
+                      }}
+                      placeholder="Ví dụ: Đã giảm 100.000đ vì đóng trước hạn"
+                      className="flex-1 px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddSnapshotExtraLine}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold cursor-pointer"
+                    >
+                      Thêm dòng
+                    </button>
+                  </div>
+
+                  {snapshotExtraLines.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {snapshotExtraLines.map((line, lineIndex) => (
+                        <div key={`${line}-${lineIndex}`} className="flex items-center justify-between gap-2 text-sm bg-indigo-50/60 border border-indigo-100 rounded-lg px-3 py-2">
+                          <span className="text-slate-700">{line}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSnapshotExtraLine(lineIndex)}
+                            className="text-rose-600 hover:text-rose-700 text-xs font-semibold cursor-pointer"
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-100 pt-3 mt-3">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Chỉnh màu ảnh</div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <label className="flex items-center justify-between gap-2 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
+                      <span>Màu chữ</span>
+                      <input
+                        type="color"
+                        value={snapshotColors.textColor}
+                        onChange={(e) => handleColorChange('textColor', e.target.value)}
+                        className="h-7 w-10 p-0 border-0 bg-transparent cursor-pointer"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-2 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
+                      <span>Màu TH bảng</span>
+                      <input
+                        type="color"
+                        value={snapshotColors.tableHeaderColor}
+                        onChange={(e) => handleColorChange('tableHeaderColor', e.target.value)}
+                        className="h-7 w-10 p-0 border-0 bg-transparent cursor-pointer"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-2 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
+                      <span>Nền header báo cáo</span>
+                      <input
+                        type="color"
+                        value={snapshotColors.reportHeaderBgColor}
+                        onChange={(e) => handleColorChange('reportHeaderBgColor', e.target.value)}
+                        className="h-7 w-10 p-0 border-0 bg-transparent cursor-pointer"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+
               {previewImageUrl ? (
                 <img
                   src={previewImageUrl}
@@ -725,7 +939,7 @@ export default function TuitionManager({
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setIsPreviewOpen(false)}
+                onClick={handleClosePreview}
                 className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
                 Đóng

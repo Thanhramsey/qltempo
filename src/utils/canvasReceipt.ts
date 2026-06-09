@@ -206,26 +206,84 @@ export function generateStudentTuitionSnapshotImage(data: {
   paymentDate: string;
   status: string;
   note: string;
+  customization?: {
+    showPhone?: boolean;
+    showCycleProgress?: boolean;
+    showTuitionAmounts?: boolean;
+    showStatus?: boolean;
+    showPaymentDate?: boolean;
+    showNote?: boolean;
+    showFooter?: boolean;
+    textColor?: string;
+    tableHeaderColor?: string;
+    reportHeaderBgColor?: string;
+    extraLines?: string[];
+  };
   sessions: Array<{ date: string; shiftLabel: string }>;
 }): string {
   const sessionsToRender = data.sessions.slice(0, data.sessionsTarget);
   const tableX = 50;
-  const tableY = 485;
   const tableWidth = 800;
   const tableHeaderHeight = 34;
   const rowHeight = 28;
   const sttColWidth = 60;
   const dateColWidth = 120;
   const rowCount = Math.max(sessionsToRender.length, 1);
+  const shouldShowPhone = data.customization?.showPhone ?? true;
+  const shouldShowCycleProgress = data.customization?.showCycleProgress ?? true;
+  const shouldShowTuitionAmounts = data.customization?.showTuitionAmounts ?? true;
+  const shouldShowStatus = data.customization?.showStatus ?? true;
+  const shouldShowPaymentDate = data.customization?.showPaymentDate ?? true;
+  const shouldShowNote = data.customization?.showNote ?? true;
+  const shouldShowFooter = data.customization?.showFooter ?? true;
+  const customTextColor = data.customization?.textColor || '#0f172a';
+  const customTableHeaderColor = data.customization?.tableHeaderColor || '#1d4ed8';
+  const customReportHeaderBgColor = data.customization?.reportHeaderBgColor || '#1d4ed8';
+  const extraLines = (data.customization?.extraLines || []).map((line) => line.trim()).filter(Boolean);
+  const debt = Math.max(data.totalAmount - data.amountPaid, 0);
+
+  const infoPanelX = 30;
+  const infoPanelY = 145;
+  const infoPanelWidth = 840;
+  const infoLineStartY = infoPanelY + 80;
+  const infoLineGap = 28;
+
+  const infoLines: string[] = [];
+  infoLines.push(`Họ tên: ${data.studentName}`);
+  if (shouldShowPhone) infoLines.push(`SĐT: ${data.phone || '---'}`);
+  if (shouldShowCycleProgress) {
+    infoLines.push(`Chu kỳ hiện tại: ${data.cycleIndex}`);
+    infoLines.push(
+      `Tiến độ chu kỳ: ${data.currentCycleSessions}/${data.sessionsTarget} buổi (Tổng đã học: ${data.totalPresentSessions} buổi)`
+    );
+  }
+  if (shouldShowTuitionAmounts) {
+    infoLines.push(`Học phí chu kỳ: ${data.totalAmount.toLocaleString()} đ`);
+    infoLines.push(`Đã đóng: ${data.amountPaid.toLocaleString()} đ | Còn nợ: ${debt.toLocaleString()} đ`);
+  }
+  extraLines.forEach((line) => infoLines.push(line));
+
+  const infoPanelHeight = Math.max(230, 115 + Math.max(infoLines.length - 1, 0) * infoLineGap);
+  const sessionsPanelY = infoPanelY + infoPanelHeight + 25;
+  const tableY = sessionsPanelY + 85;
+
+  const detailLines: string[] = [];
+  if (shouldShowStatus) detailLines.push(`Trạng thái học phí: ${data.status}`);
+  if (shouldShowPaymentDate) {
+    detailLines.push(`Ngày đóng: ${data.paymentDate ? data.paymentDate.split('-').reverse().join('/') : '---'}`);
+  }
+  if (shouldShowNote) detailLines.push(`Ghi chú: ${data.note || '---'}`);
+
   const tableHeight = tableHeaderHeight + rowCount * rowHeight;
   const tableBottomY = tableY + tableHeight;
-  const badgeY = tableBottomY + 70;
-  const statusLineY = badgeY + 10;
-  const noteLineY = statusLineY + 25;
-  const footerY = noteLineY + 30;
 
-  const panelBottomY = footerY + 20;
-  const sessionsPanelHeight = panelBottomY - 400;
+  const badgeY = tableBottomY + 70;
+  const detailsStartY = badgeY + 10;
+  const detailsEndY = detailLines.length > 0 ? detailsStartY + (detailLines.length - 1) * 24 : detailsStartY;
+  const footerY = detailsEndY + 30;
+
+  const panelBottomY = (shouldShowFooter ? footerY : detailsEndY) + 20;
+  const sessionsPanelHeight = panelBottomY - sessionsPanelY;
   const dynamicCanvasHeight = Math.max(1200, panelBottomY + 40);
 
   const canvas = document.createElement('canvas');
@@ -250,10 +308,7 @@ export function generateStudentTuitionSnapshotImage(data: {
   ctx.arc(120, canvas.height - 100, 260, 0, Math.PI * 2);
   ctx.fill();
 
-  const head = ctx.createLinearGradient(0, 0, canvas.width, 0);
-  head.addColorStop(0, '#1d4ed8');
-  head.addColorStop(1, '#4338ca');
-  ctx.fillStyle = head;
+  ctx.fillStyle = customReportHeaderBgColor;
   ctx.fillRect(0, 0, canvas.width, 130);
 
   ctx.fillStyle = '#ffffff';
@@ -266,42 +321,38 @@ export function generateStudentTuitionSnapshotImage(data: {
   ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = '#e2e8f0';
   ctx.lineWidth = 2;
-  ctx.fillRect(30, 145, 840, 230);
-  ctx.strokeRect(30, 145, 840, 230);
+  ctx.fillRect(infoPanelX, infoPanelY, infoPanelWidth, infoPanelHeight);
+  ctx.strokeRect(infoPanelX, infoPanelY, infoPanelWidth, infoPanelHeight);
 
   ctx.fillStyle = '#1e3a8a';
   ctx.font = 'bold 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillText('THÔNG TIN HỌC SINH', 50, 185);
+  ctx.fillText('THÔNG TIN HỌC SINH', 50, infoPanelY + 40);
 
   ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillStyle = '#0f172a';
-  ctx.fillText(`Họ tên: ${data.studentName}`, 50, 225);
-  ctx.fillText(`SĐT: ${data.phone || '---'}`, 50, 255);
-  ctx.fillText(`Chu kỳ hiện tại: ${data.cycleIndex}`, 50, 285);
-  ctx.fillText(
-    `Tiến độ chu kỳ: ${data.currentCycleSessions}/${data.sessionsTarget} buổi (Tổng đã học: ${data.totalPresentSessions} buổi)`,
-    50,
-    315
-  );
-
-  const debt = Math.max(data.totalAmount - data.amountPaid, 0);
-  ctx.fillStyle = '#0f172a';
-  ctx.fillText(`Học phí chu kỳ: ${data.totalAmount.toLocaleString()} đ`, 50, 345);
-  ctx.fillStyle = debt === 0 ? '#059669' : '#b45309';
-  ctx.fillText(`Đã đóng: ${data.amountPaid.toLocaleString()} đ | Còn nợ: ${debt.toLocaleString()} đ`, 430, 345);
+  infoLines.forEach((line, lineIndex) => {
+    const lineY = infoLineStartY + lineIndex * infoLineGap;
+    if (line.startsWith('Đã đóng:')) {
+      ctx.fillStyle = debt === 0 ? '#059669' : '#b45309';
+      ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    } else {
+      ctx.fillStyle = customTextColor;
+      ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    }
+    ctx.fillText(line, 50, lineY);
+  });
 
   ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = '#e2e8f0';
-  ctx.fillRect(30, 400, 840, sessionsPanelHeight);
-  ctx.strokeRect(30, 400, 840, sessionsPanelHeight);
+  ctx.fillRect(30, sessionsPanelY, 840, sessionsPanelHeight);
+  ctx.strokeRect(30, sessionsPanelY, 840, sessionsPanelHeight);
 
   ctx.fillStyle = '#1e3a8a';
   ctx.font = 'bold 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillText('CÁC BUỔI ĐÃ HỌC (CÓ MẶT)', 50, 440);
+  ctx.fillText('CÁC BUỔI ĐÃ HỌC (CÓ MẶT)', 50, sessionsPanelY + 40);
 
   ctx.font = '14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
   ctx.fillStyle = '#64748b';
-  ctx.fillText(`Danh sách theo chu kỳ hiện tại, tối đa ${data.sessionsTarget} buổi`, 50, 465);
+  ctx.fillText(`Danh sách theo chu kỳ hiện tại, tối đa ${data.sessionsTarget} buổi`, 50, sessionsPanelY + 65);
 
   // Table frame
   ctx.fillStyle = '#ffffff';
@@ -313,10 +364,7 @@ export function generateStudentTuitionSnapshotImage(data: {
   ctx.stroke();
 
   // Header row
-  const tableHeaderGrad = ctx.createLinearGradient(tableX, tableY, tableX + tableWidth, tableY);
-  tableHeaderGrad.addColorStop(0, '#1d4ed8');
-  tableHeaderGrad.addColorStop(1, '#4338ca');
-  ctx.fillStyle = tableHeaderGrad;
+  ctx.fillStyle = customTableHeaderColor;
   ctx.beginPath();
   ctx.roundRect(tableX, tableY, tableWidth, tableHeaderHeight, 10);
   ctx.fill();
@@ -356,7 +404,7 @@ export function generateStudentTuitionSnapshotImage(data: {
     ctx.lineTo(tableX + tableWidth, rowTop + rowHeight);
     ctx.stroke();
 
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = customTextColor;
     ctx.fillText(String(idx + 1), tableX + 18, rowCenterY);
     ctx.fillText(session.date.split('-').reverse().join('/'), tableX + sttColWidth + 18, rowCenterY);
     ctx.fillText(session.shiftLabel, tableX + sttColWidth + dateColWidth + 18, rowCenterY);
@@ -381,16 +429,20 @@ export function generateStudentTuitionSnapshotImage(data: {
   ctx.font = 'bold 13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
   ctx.fillText(paidEnough ? 'TRẠNG THÁI: ĐÃ ĐỦ' : 'TRẠNG THÁI: CHƯA ĐỦ', badgeX + 12, badgeY - 2);
 
-  ctx.fillStyle = '#64748b';
-  ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillText(`Trạng thái học phí: ${data.status}`, 50, statusLineY);
-  ctx.fillText(`Ngày đóng: ${data.paymentDate ? data.paymentDate.split('-').reverse().join('/') : '---'}`, 290, statusLineY);
-  ctx.fillText(`Ghi chú: ${data.note || '---'}`, 50, noteLineY);
+  if (detailLines.length > 0) {
+    ctx.fillStyle = '#64748b';
+    ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    detailLines.forEach((line, lineIndex) => {
+      ctx.fillText(line, 50, detailsStartY + lineIndex * 24);
+    });
+  }
 
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '11px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillText('Trung tâm Piano - Học tập đều đặn, tiến bộ mỗi ngày', canvas.width / 2, footerY);
+  if (shouldShowFooter) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '11px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText('Trung tâm Piano - Học tập đều đặn, tiến bộ mỗi ngày', canvas.width / 2, footerY);
+  }
 
   const dataURL = canvas.toDataURL('image/png');
   return dataURL;
@@ -419,6 +471,19 @@ export function exportStudentTuitionSnapshot(data: {
   paymentDate: string;
   status: string;
   note: string;
+  customization?: {
+    showPhone?: boolean;
+    showCycleProgress?: boolean;
+    showTuitionAmounts?: boolean;
+    showStatus?: boolean;
+    showPaymentDate?: boolean;
+    showNote?: boolean;
+    showFooter?: boolean;
+    textColor?: string;
+    tableHeaderColor?: string;
+    reportHeaderBgColor?: string;
+    extraLines?: string[];
+  };
   sessions: Array<{ date: string; shiftLabel: string }>;
 }) {
   const dataUrl = generateStudentTuitionSnapshotImage(data);
