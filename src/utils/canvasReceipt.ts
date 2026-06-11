@@ -219,15 +219,16 @@ export function generateStudentTuitionSnapshotImage(data: {
     reportHeaderBgColor?: string;
     extraLines?: string[];
   };
-  sessions: Array<{ date: string; shiftLabel: string }>;
+  sessions: Array<{ date: string; shiftLabel: string; status?: string }>;
 }): string {
-  const sessionsToRender = data.sessions.slice(0, data.sessionsTarget);
+  const sessionsToRender = data.sessions;
   const tableX = 50;
   const tableWidth = 800;
   const tableHeaderHeight = 34;
   const rowHeight = 28;
   const sttColWidth = 60;
   const dateColWidth = 120;
+  const shiftColWidth = 490;
   const rowCount = Math.max(sessionsToRender.length, 1);
   const shouldShowPhone = data.customization?.showPhone ?? true;
   const shouldShowCycleProgress = data.customization?.showCycleProgress ?? true;
@@ -348,11 +349,11 @@ export function generateStudentTuitionSnapshotImage(data: {
 
   ctx.fillStyle = '#1e3a8a';
   ctx.font = 'bold 20px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillText('CÁC BUỔI ĐÃ HỌC (CÓ MẶT)', 50, sessionsPanelY + 40);
+  ctx.fillText('DANH SÁCH BUỔI HỌC TRONG CHU KỲ', 50, sessionsPanelY + 40);
 
   ctx.font = '14px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
   ctx.fillStyle = '#64748b';
-  ctx.fillText(`Danh sách theo chu kỳ hiện tại, tối đa ${data.sessionsTarget} buổi`, 50, sessionsPanelY + 65);
+  ctx.fillText(`Chu kỳ ${data.cycleIndex} · Có mặt (trắng), vắng phép (vàng), vắng KP (đỏ)`, 50, sessionsPanelY + 65);
 
   // Table frame
   ctx.fillStyle = '#ffffff';
@@ -369,23 +370,29 @@ export function generateStudentTuitionSnapshotImage(data: {
   ctx.roundRect(tableX, tableY, tableWidth, tableHeaderHeight, 10);
   ctx.fill();
 
-  // Header text
-  ctx.font = 'bold 13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText('STT', tableX + 18, tableY + 22);
-  ctx.fillText('Ngày', tableX + sttColWidth + 18, tableY + 22);
-  ctx.fillText('Ca học', tableX + sttColWidth + dateColWidth + 18, tableY + 22);
+  // Column positions
+  const col1X = tableX + sttColWidth;
+  const col2X = col1X + dateColWidth;
+  const col3X = col2X + shiftColWidth;
 
   // Vertical separators
-  const col1X = tableX + sttColWidth;
-  const col2X = tableX + sttColWidth + dateColWidth;
   ctx.strokeStyle = '#e2e8f0';
   ctx.beginPath();
   ctx.moveTo(col1X, tableY);
   ctx.lineTo(col1X, tableBottomY);
   ctx.moveTo(col2X, tableY);
   ctx.lineTo(col2X, tableBottomY);
+  ctx.moveTo(col3X, tableY);
+  ctx.lineTo(col3X, tableBottomY);
   ctx.stroke();
+
+  // Header text
+  ctx.font = 'bold 13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('STT', tableX + 18, tableY + 22);
+  ctx.fillText('Ngày', col1X + 8, tableY + 22);
+  ctx.fillText('Ca học', col2X + 8, tableY + 22);
+  ctx.fillText('Trạng thái', col3X + 8, tableY + 22);
 
   // Body rows
   ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
@@ -393,7 +400,16 @@ export function generateStudentTuitionSnapshotImage(data: {
     const rowTop = tableY + tableHeaderHeight + idx * rowHeight;
     const rowCenterY = rowTop + 19;
 
-    if (idx % 2 === 0) {
+    const isUnexcused = session.status === 'absent_unexcused';
+    const isExcused = session.status === 'absent_excused';
+
+    if (isUnexcused) {
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
+      ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, rowHeight);
+    } else if (isExcused) {
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.08)';
+      ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, rowHeight);
+    } else if (idx % 2 === 0) {
       ctx.fillStyle = 'rgba(99, 102, 241, 0.05)';
       ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, rowHeight);
     }
@@ -406,8 +422,12 @@ export function generateStudentTuitionSnapshotImage(data: {
 
     ctx.fillStyle = customTextColor;
     ctx.fillText(String(idx + 1), tableX + 18, rowCenterY);
-    ctx.fillText(session.date.split('-').reverse().join('/'), tableX + sttColWidth + 18, rowCenterY);
-    ctx.fillText(session.shiftLabel, tableX + sttColWidth + dateColWidth + 18, rowCenterY);
+    ctx.fillText(session.date.split('-').reverse().join('/'), col1X + 8, rowCenterY);
+    ctx.fillText(session.shiftLabel, col2X + 8, rowCenterY);
+
+    const statusLabel = isUnexcused ? 'Vắng KP' : isExcused ? 'Vắng phép' : 'Có mặt';
+    ctx.fillStyle = isUnexcused ? '#dc2626' : isExcused ? '#d97706' : '#16a34a';
+    ctx.fillText(statusLabel, col3X + 8, rowCenterY);
   });
 
   if (sessionsToRender.length === 0) {
@@ -484,7 +504,7 @@ export function exportStudentTuitionSnapshot(data: {
     reportHeaderBgColor?: string;
     extraLines?: string[];
   };
-  sessions: Array<{ date: string; shiftLabel: string }>;
+  sessions: Array<{ date: string; shiftLabel: string; status?: string }>;
 }) {
   const dataUrl = generateStudentTuitionSnapshotImage(data);
   const fileName = `BaoCao_${data.studentName.replace(/\s+/g, '_')}_chu_ky_${data.cycleIndex}.png`;

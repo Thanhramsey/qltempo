@@ -252,10 +252,33 @@ export default function TuitionManager({
   };
 
   const refreshSnapshotPreview = (row: TuitionRow) => {
-    const history = getStudentPresentAttendances(attendances, row.student.id);
+    const countingHistory = getStudentPresentAttendances(attendances, row.student.id);
     const sessionsTarget = getRowSessionsTarget(row);
     const cycleStart = (row.cycleIndex - 1) * sessionsTarget;
-    const cycleSessions = history.slice(cycleStart, cycleStart + sessionsTarget);
+    const cycleCountingSessions = countingHistory.slice(cycleStart, cycleStart + sessionsTarget);
+
+    // Date range of this cycle based on counting sessions (present + unexcused)
+    const cycleStartDate = cycleCountingSessions[0]?.date ?? null;
+    const cycleEndDate =
+      cycleCountingSessions.length >= sessionsTarget
+        ? cycleCountingSessions[cycleCountingSessions.length - 1].date
+        : new Date().toISOString().split('T')[0];
+
+    // All attendance records (all statuses) within the cycle date range
+    const allCycleAttendances = cycleStartDate
+      ? attendances
+          .filter(
+            (att) =>
+              att.studentId === row.student.id &&
+              att.date >= cycleStartDate &&
+              att.date <= cycleEndDate
+          )
+          .sort((a, b) => {
+            const byDate = a.date.localeCompare(b.date);
+            if (byDate !== 0) return byDate;
+            return (a.updatedAt || '').localeCompare(b.updatedAt || '');
+          })
+      : [];
 
     const buildShiftLabel = (shift?: Shift) => {
       if (!shift) return '';
@@ -296,13 +319,14 @@ export default function TuitionManager({
         ...snapshotColors,
         extraLines: snapshotExtraLines,
       },
-      sessions: cycleSessions.map((session) => {
+      sessions: allCycleAttendances.map((session) => {
         const shift = shifts.find((sh) => sh.id === session.shiftId);
         const shiftLabel = shift ? buildShiftLabel(shift) : session.shiftId;
 
         return {
           date: session.date,
           shiftLabel,
+          status: session.status,
         };
       }),
     });
@@ -318,7 +342,7 @@ export default function TuitionManager({
     }, 120);
 
     return () => window.clearTimeout(timer);
-  }, [isPreviewOpen, previewRow, snapshotDisplayFields, snapshotExtraLines, snapshotColors]);
+  }, [isPreviewOpen, previewRow, snapshotDisplayFields, snapshotExtraLines, snapshotColors, attendances]);
 
   const handleExportSnapshot = (row: TuitionRow) => {
     setPreviewRow(row);

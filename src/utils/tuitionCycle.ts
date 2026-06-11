@@ -64,7 +64,7 @@ export interface CycleSessionsSlice {
 
 export function getStudentPresentAttendances(attendances: Attendance[], studentId: string): Attendance[] {
   return attendances
-    .filter((att) => att.studentId === studentId && att.status === 'present')
+    .filter((att) => att.studentId === studentId && (att.status === 'present' || att.status === 'absent_unexcused'))
     .sort((a, b) => {
       const byDate = a.date.localeCompare(b.date);
       if (byDate !== 0) return byDate;
