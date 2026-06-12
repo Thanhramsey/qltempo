@@ -2,7 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Shift, Student, Payment, PaymentStatus, Attendance } from '../types';
 import { CircleDollarSign, Edit3, Image, Download, Search, CheckCircle, AlertTriangle, Coins, X, Loader2 } from 'lucide-react';
 import { exportToCSV } from '../utils/csvExport';
-import { downloadStudentTuitionSnapshotImage, generateStudentTuitionSnapshotImage } from '../utils/canvasReceipt';
+import {
+  downloadStudentTuitionSnapshotImage,
+  downloadTuitionInvoiceImage,
+  downloadTuitionInvoicePdf,
+  generateStudentTuitionSnapshotImage,
+  generateTuitionInvoiceImage,
+} from '../utils/canvasReceipt';
 import ToastMessage, { ToastType } from './ui/ToastMessage';
 import {
   EXCUSED_ABSENCE_FREE_SESSIONS,
@@ -101,6 +107,7 @@ export default function TuitionManager({
   const [note, setNote] = useState('');
   const [currentPaymentId, setCurrentPaymentId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exportingInvoice, setExportingInvoice] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string>('');
   const [previewFileName, setPreviewFileName] = useState<string>('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -112,6 +119,17 @@ export default function TuitionManager({
   const [toast, setToast] = useState<{ type: ToastType; message: string } | null>(null);
 
   const showToast = (type: ToastType, message: string) => setToast({ type, message });
+
+  const addMonthsToYmd = (dateStr: string, months: number): string => {
+    if (!dateStr) return '';
+    const parsed = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return '';
+    parsed.setMonth(parsed.getMonth() + months);
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   const getRowBilledAmount = (row: TuitionRow) => row.payment?.totalAmount || row.cycleFee;
   const getRowSessionsTarget = (row: TuitionRow) => row.payment?.sessionsTarget || row.sessionsTarget;
@@ -425,6 +443,92 @@ export default function TuitionManager({
 
   const handleDownloadPreview = () => {
     downloadStudentTuitionSnapshotImage(previewImageUrl, previewFileName);
+  };
+
+  const handleExportInvoice = async () => {
+    if (!selectedStudent) return;
+
+    setExportingInvoice(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const courseStartDate = selectedStudent.joinDate || paymentDate || today;
+      const courseEndDate = addMonthsToYmd(courseStartDate, 3);
+
+      const invoiceDataUrl = await generateTuitionInvoiceImage({
+        centerName: 'TEMPO',
+        centerSlogan: 'Music can change your life',
+        centerAddress: '89 Phạm Văn Đồng - Tp. Pleiku - Gia Lai.',
+        centerEmail: 'tempomusic0403@gmail.com',
+        centerHotline: '034 930 3368',
+        bankAccountName: 'NGUYEN VAN THIEU',
+        bankAccountNumber: '62288000564579',
+        bankName: 'BIDV - CHI NHANH DONG GIA LAI',
+        studentName: selectedStudent.name,
+        studentPhone: selectedStudent.phone || '',
+        studentEmail: selectedStudent.email || '',
+        paymentDate: paymentDate || today,
+        courseStartDate,
+        courseEndDate,
+        cycleIndex: selectedCycleIndex,
+        sessionsTarget: selectedCycleSessionsTarget,
+        tuitionAmount: selectedCycleFee,
+        amountPaid,
+        qrImagePath: '/tuition-qr.png',
+        note,
+      });
+
+      const fileName = `HoaDon_${selectedStudent.name.replace(/\s+/g, '_')}_chu_ky_${selectedCycleIndex}.png`;
+      downloadTuitionInvoiceImage(invoiceDataUrl, fileName);
+      showToast('success', 'Đã xuất hóa đơn thành công.');
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Không thể xuất hóa đơn. Vui lòng thử lại.');
+    } finally {
+      setExportingInvoice(false);
+    }
+  };
+
+  const handleExportInvoicePdf = async () => {
+    if (!selectedStudent) return;
+
+    setExportingInvoice(true);
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const courseStartDate = selectedStudent.joinDate || paymentDate || today;
+      const courseEndDate = addMonthsToYmd(courseStartDate, 3);
+
+      const invoiceDataUrl = await generateTuitionInvoiceImage({
+        centerName: 'TEMPO',
+        centerSlogan: 'Music can change your life',
+        centerAddress: '89 Phạm Văn Đồng - Tp. Pleiku - Gia Lai.',
+        centerEmail: 'tempomusic0403@gmail.com',
+        centerHotline: '034 930 3368',
+        bankAccountName: 'NGUYEN VAN THIEU',
+        bankAccountNumber: '62288000564579',
+        bankName: 'BIDV - CHI NHANH DONG GIA LAI',
+        studentName: selectedStudent.name,
+        studentPhone: selectedStudent.phone || '',
+        studentEmail: selectedStudent.email || '',
+        paymentDate: paymentDate || today,
+        courseStartDate,
+        courseEndDate,
+        cycleIndex: selectedCycleIndex,
+        sessionsTarget: selectedCycleSessionsTarget,
+        tuitionAmount: selectedCycleFee,
+        amountPaid,
+        qrImagePath: '/tuition-qr.png',
+        note,
+      });
+
+      const fileName = `HoaDon_${selectedStudent.name.replace(/\s+/g, '_')}_chu_ky_${selectedCycleIndex}`;
+      downloadTuitionInvoicePdf(invoiceDataUrl, fileName);
+      showToast('success', 'Đã xuất hóa đơn PDF thành công.');
+    } catch (err) {
+      console.error(err);
+      showToast('error', 'Không thể xuất PDF. Vui lòng thử lại.');
+    } finally {
+      setExportingInvoice(false);
+    }
   };
 
   const handleExportCSV = () => {
@@ -756,7 +860,7 @@ export default function TuitionManager({
 
       {isModalOpen && selectedStudent && (
         <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs transition-opacity duration-200">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-1.5">
                 <Coins size={20} className="text-indigo-600" />
@@ -835,13 +939,31 @@ export default function TuitionManager({
                 />
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+              <div className="pt-4 border-t border-slate-100 flex flex-wrap justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
                   className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
                   Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportInvoice}
+                  disabled={exportingInvoice || saving}
+                  className="px-5 py-2 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-400 text-white font-bold rounded-xl text-sm shadow-md cursor-pointer flex items-center gap-1"
+                >
+                  {exportingInvoice && <Loader2 size={14} className="animate-spin" />}
+                  <span>Xuất ảnh</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportInvoicePdf}
+                  disabled={exportingInvoice || saving}
+                  className="px-5 py-2 bg-sky-600 hover:bg-sky-700 disabled:bg-sky-400 text-white font-bold rounded-xl text-sm shadow-md cursor-pointer flex items-center gap-1"
+                >
+                  {exportingInvoice && <Loader2 size={14} className="animate-spin" />}
+                  <span>Xuất PDF</span>
                 </button>
                 <button
                   type="submit"

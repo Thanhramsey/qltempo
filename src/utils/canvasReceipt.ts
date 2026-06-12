@@ -1,3 +1,5 @@
+import { jsPDF } from 'jspdf';
+
 /**
  * Draw and export a beautiful, professional tuition fee receipt image using HTML5 Canvas
  */
@@ -520,6 +522,372 @@ export function downloadStudentTuitionSnapshotImage(dataUrl: string, fileName: s
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+function formatDateVn(dateStr: string): string {
+  if (!dateStr) return '---';
+  const [year, month, day] = dateStr.split('-');
+  if (!year || !month || !day) return dateStr;
+  return `${day}/${month}/${year}`;
+}
+
+function formatMoneyVnd(amount: number): string {
+  return `${Math.max(amount || 0, 0).toLocaleString()} VNĐ`;
+}
+
+function wrapTextLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const normalized = (text || '').trim();
+  if (!normalized) return [''];
+
+  const words = normalized.split(/\s+/);
+  const lines: string[] = [];
+  let current = '';
+
+  words.forEach((word) => {
+    const testLine = current ? `${current} ${word}` : word;
+    if (ctx.measureText(testLine).width <= maxWidth) {
+      current = testLine;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  });
+
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [''];
+}
+
+async function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Không thể tải ảnh QR.'));
+    img.src = src;
+  });
+}
+
+async function loadFirstAvailableImage(paths: string[]): Promise<HTMLImageElement | null> {
+  for (const path of paths) {
+    try {
+      const img = await loadImageElement(path);
+      return img;
+    } catch {
+      // try next path
+    }
+  }
+  return null;
+}
+
+export async function generateTuitionInvoiceImage(data: {
+  centerName: string;
+  centerSlogan: string;
+  centerAddress: string;
+  centerEmail: string;
+  centerHotline: string;
+  bankAccountName: string;
+  bankAccountNumber: string;
+  bankName: string;
+  studentName: string;
+  studentPhone: string;
+  studentEmail?: string;
+  paymentDate: string;
+  courseStartDate: string;
+  courseEndDate: string;
+  cycleIndex: number;
+  sessionsTarget: number;
+  tuitionAmount: number;
+  amountPaid: number;
+  qrImagePath?: string;
+  note?: string;
+}): Promise<string> {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1400;
+  canvas.height = 1900;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  const tableBorder = '#d1d5db';
+  const tableHeader = '#2f477e';
+  const textPrimary = '#111827';
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = textPrimary;
+  ctx.font = 'bold 62px Georgia, serif';
+  ctx.fillText(data.centerName, 70, 110);
+
+  ctx.fillStyle = textPrimary;
+  ctx.font = '700 60px Georgia, serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('THÔNG BÁO HỌC PHÍ', canvas.width - 70, 110);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#374151';
+  ctx.font = 'italic 36px Georgia, serif';
+  ctx.fillText(data.centerSlogan, 70, 165);
+
+  ctx.fillStyle = textPrimary;
+  ctx.font = '700 34px Arial, sans-serif';
+  ctx.fillText(`Địa chỉ: ${data.centerAddress}`, 70, 250);
+  ctx.fillText(`Email: ${data.centerEmail}`, 70, 305);
+  ctx.fillText(`Hotline: ${data.centerHotline}`, 70, 360);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = textPrimary;
+  ctx.font = 'bold 42px Arial, sans-serif';
+  ctx.fillText(`Ngày: ${formatDateVn(data.paymentDate)}`, canvas.width - 70, 170);
+  ctx.textAlign = 'left';
+
+  const infoX = 60;
+  const infoY = 440;
+  const infoW = canvas.width - 120;
+  const infoH = 250;
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = tableBorder;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(infoX, infoY, infoW, infoH);
+
+  ctx.fillStyle = tableHeader;
+  ctx.fillRect(infoX, infoY, infoW, 52);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 28px Arial, sans-serif';
+  ctx.fillText('THÔNG TIN KHÁCH HÀNG', infoX + 12, infoY + 36);
+
+  const labelWidth = 290;
+  ctx.strokeStyle = tableBorder;
+  ctx.beginPath();
+  ctx.moveTo(infoX + labelWidth, infoY + 52);
+  ctx.lineTo(infoX + labelWidth, infoY + infoH);
+  ctx.stroke();
+
+  for (let i = 1; i <= 4; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(infoX, infoY + 52 + i * 50);
+    ctx.lineTo(infoX + infoW, infoY + 52 + i * 50);
+    ctx.stroke();
+  }
+
+  const courseNote = `Học phí khóa học: ${formatDateVn(data.courseStartDate)} - ${formatDateVn(data.courseEndDate)}`;
+  const mergedNote = data.note ? `${courseNote} | ${data.note}` : courseNote;
+
+  const customerRows: Array<{ label: string; value: string }> = [
+    { label: 'Tên khách hàng:', value: data.studentName },
+    { label: 'Địa chỉ:', value: data.studentEmail || '---' },
+    { label: 'Số điện thoại:', value: data.studentPhone || '---' },
+    { label: 'Ghi chú:', value: mergedNote },
+  ];
+
+  ctx.fillStyle = textPrimary;
+  ctx.font = '700 30px Arial, sans-serif';
+  customerRows.forEach((row, idx) => {
+    const y = infoY + 88 + idx * 50;
+    ctx.fillText(row.label, infoX + 14, y);
+    ctx.font = '500 30px Arial, sans-serif';
+    ctx.fillText(row.value, infoX + labelWidth + 14, y);
+    ctx.font = '700 30px Arial, sans-serif';
+  });
+
+  const itemX = 60;
+  const itemY = 790;
+  const itemW = canvas.width - 120;
+  const itemH = 510;
+  ctx.strokeStyle = tableBorder;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(itemX, itemY, itemW, itemH);
+
+  const sttW = 110;
+  const infoWCol = 560;
+  const qtyW = 180;
+  const priceW = 210;
+  const totalW = itemW - sttW - infoWCol - qtyW - priceW;
+
+  ctx.fillStyle = tableHeader;
+  ctx.fillRect(itemX, itemY, itemW, 52);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 28px Arial, sans-serif';
+  ctx.fillText('STT', itemX + 36, itemY + 36);
+  ctx.fillText('THÔNG TIN ', itemX + sttW + 12, itemY + 36);
+  ctx.fillText('SỐ LƯỢNG', itemX + sttW + infoWCol + 16, itemY + 36);
+  ctx.fillText('GIÁ TIỀN', itemX + sttW + infoWCol + qtyW + 14, itemY + 36);
+  ctx.fillText('THÀNH TIỀN', itemX + sttW + infoWCol + qtyW + priceW + 14, itemY + 36);
+
+  const x1 = itemX + sttW;
+  const x2 = x1 + infoWCol;
+  const x3 = x2 + qtyW;
+  const x4 = x3 + priceW;
+
+  ctx.strokeStyle = tableBorder;
+  [x1, x2, x3, x4].forEach((lineX) => {
+    ctx.beginPath();
+    ctx.moveTo(lineX, itemY);
+    ctx.lineTo(lineX, itemY + itemH);
+    ctx.stroke();
+  });
+
+  const items = [
+    {
+      stt: '1',
+      description: 'Thanh toán học phí đợt này',
+      qty: '1',
+      unitPrice: formatMoneyVnd(data.amountPaid),
+      totalPrice: formatMoneyVnd(data.amountPaid),
+    },
+  ];
+
+  const detailFont = '500 21px Arial, sans-serif';
+  const lineHeight = 26;
+  const rowPadding = 14;
+  const blankRowHeight = 76;
+  const renderedRowHeights: number[] = [];
+
+  ctx.font = detailFont;
+  items.forEach((item) => {
+    const lines = wrapTextLines(ctx, item.description, infoWCol - 26);
+    const rowHeight = Math.max(blankRowHeight, lines.length * lineHeight + rowPadding * 2 + 6);
+    renderedRowHeights.push(rowHeight);
+  });
+
+  while (renderedRowHeights.length < 5) renderedRowHeights.push(blankRowHeight);
+
+  let currentY = itemY + 52;
+  renderedRowHeights.forEach((height) => {
+    currentY += height;
+    ctx.beginPath();
+    ctx.moveTo(itemX, currentY);
+    ctx.lineTo(itemX + itemW, currentY);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = textPrimary;
+  ctx.font = detailFont;
+
+  let rowTop = itemY + 52;
+  items.forEach((item, idx) => {
+    const rowHeight = renderedRowHeights[idx];
+    const lines = wrapTextLines(ctx, item.description, infoWCol - 26);
+    const baseY = rowTop + rowPadding + 16;
+
+    ctx.textAlign = 'center';
+    ctx.fillText(item.stt, itemX + sttW / 2, rowTop + rowHeight / 2 + 7);
+
+    ctx.textAlign = 'left';
+    lines.forEach((line, lineIdx) => {
+      ctx.fillText(line, x1 + 12, baseY + lineIdx * lineHeight);
+    });
+
+    ctx.textAlign = 'center';
+    ctx.fillText(item.qty, x2 + qtyW / 2, rowTop + rowHeight / 2 + 7);
+
+    ctx.textAlign = 'right';
+    ctx.fillText(item.unitPrice, x4 - 14, rowTop + rowHeight / 2 + 7);
+    ctx.fillText(item.totalPrice, itemX + itemW - 14, rowTop + rowHeight / 2 + 7);
+
+    rowTop += rowHeight;
+  });
+
+  const tableBottom = rowTop + renderedRowHeights.slice(items.length).reduce((sum, h) => sum + h, 0);
+  const totalRowY = tableBottom;
+  const totalRowH = blankRowHeight;
+  const totalLabelText = 'TỔNG TIỀN THANH TOÁN';
+  const totalAmountText = formatMoneyVnd(data.amountPaid);
+
+  // Render as plain bold text in the existing table cells (no extra shape to avoid visual offset).
+  ctx.fillStyle = textPrimary;
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 14px Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(totalLabelText, x3 + 10, totalRowY + totalRowH / 2);
+
+  ctx.font = 'bold 14px Arial, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(totalAmountText, itemX + itemW - 8, totalRowY + totalRowH / 2);
+  ctx.textBaseline = 'alphabetic';
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = textPrimary;
+  ctx.font = 'bold 34px Arial, sans-serif';
+  const bankInfoTop = totalRowY + totalRowH + 90;
+  ctx.fillText(`Chủ TK: ${data.bankAccountName}`, 80, bankInfoTop);
+  ctx.fillText(`SỐ TK: ${data.bankAccountNumber}`, 80, bankInfoTop + 52);
+  ctx.fillText(data.bankName, 80, bankInfoTop + 104);
+
+  const qrCandidates = [
+    data.qrImagePath,
+    '/tuition-qr.png',
+    '/tuition-qr.jpg',
+    '/tuition-qr.jpeg',
+    '/qr.png',
+    '/qr.jpg',
+    '/qr.jpeg',
+  ].filter((value): value is string => Boolean(value));
+  const qrImage = await loadFirstAvailableImage(qrCandidates);
+
+  const qrX = canvas.width - 350;
+  const qrY = bankInfoTop - 50;
+  if (qrImage) {
+    const prevSmoothing = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(qrImage, qrX, qrY, 240, 240);
+    ctx.imageSmoothingEnabled = prevSmoothing;
+  } else {
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(qrX, qrY, 240, 240);
+    ctx.fillStyle = '#64748b';
+    ctx.font = 'bold 20px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('CHƯA CÓ QR', qrX + 120, qrY + 128);
+    ctx.textAlign = 'left';
+  }
+  // ctx.strokeStyle = '#10b981';
+  // ctx.lineWidth = 2;
+  // ctx.strokeRect(qrX - 8, qrY - 8, 256, 256);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#374151';
+  ctx.font = '600 30px Arial, sans-serif';
+  ctx.fillText('Nếu có thắc mắc xin vui lòng liên hệ 034 930 3368.', canvas.width / 2, 1810);
+  ctx.font = 'italic bold 46px Georgia, serif';
+  ctx.fillText('Chân thành cảm ơn!', canvas.width / 2, 1860);
+
+  return canvas.toDataURL('image/png');
+}
+
+export function downloadTuitionInvoiceImage(dataUrl: string, fileName: string) {
+  if (!dataUrl) return;
+  const link = document.createElement('a');
+  link.download = fileName;
+  link.href = dataUrl;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+export function downloadTuitionInvoicePdf(dataUrl: string, fileName: string) {
+  if (!dataUrl) return;
+
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 8;
+  const maxWidth = pageWidth - margin * 2;
+  const maxHeight = pageHeight - margin * 2;
+
+  const imageProps = pdf.getImageProperties(dataUrl);
+  const ratio = Math.min(maxWidth / imageProps.width, maxHeight / imageProps.height);
+  const renderWidth = imageProps.width * ratio;
+  const renderHeight = imageProps.height * ratio;
+  const x = (pageWidth - renderWidth) / 2;
+  const y = (pageHeight - renderHeight) / 2;
+
+  pdf.addImage(dataUrl, 'PNG', x, y, renderWidth, renderHeight, undefined, 'FAST');
+  const safeName = fileName.toLowerCase().endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+  pdf.save(safeName);
 }
 
 // Backward-compat export for stale HMR modules still importing the old function name.
