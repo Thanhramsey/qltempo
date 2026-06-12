@@ -632,126 +632,217 @@ export async function generateTuitionInvoiceImage(data: {
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
 
-  const tableBorder = '#d1d5db';
-  const tableHeader = '#2f477e';
-  const textPrimary = '#111827';
+  const theme = {
+    blue: '#1d4ed8',
+    blueDark: '#1e3a8a',
+    slate: '#334155',
+    ink: '#0f172a',
+    border: '#dbe3f0',
+    panel: '#f8fbff',
+  };
 
-  ctx.fillStyle = '#ffffff';
+  const bg = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  bg.addColorStop(0, '#f6fbff');
+  bg.addColorStop(1, '#eef3ff');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = textPrimary;
-  ctx.font = 'bold 62px Georgia, serif';
-  ctx.fillText(data.centerName, 70, 110);
-
-  ctx.fillStyle = textPrimary;
-  ctx.font = '700 60px Georgia, serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('THÔNG BÁO HỌC PHÍ', canvas.width - 70, 110);
-
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#374151';
-  ctx.font = 'italic 36px Georgia, serif';
-  ctx.fillText(data.centerSlogan, 70, 165);
-
-  ctx.fillStyle = textPrimary;
-  ctx.font = '700 34px Arial, sans-serif';
-  ctx.fillText(`Địa chỉ: ${data.centerAddress}`, 70, 250);
-  ctx.fillText(`Email: ${data.centerEmail}`, 70, 305);
-  ctx.fillText(`Hotline: ${data.centerHotline}`, 70, 360);
-
-  ctx.textAlign = 'right';
-  ctx.fillStyle = textPrimary;
-  ctx.font = 'bold 42px Arial, sans-serif';
-  ctx.fillText(`Ngày: ${formatDateVn(data.paymentDate)}`, canvas.width - 70, 170);
-  ctx.textAlign = 'left';
-
-  const infoX = 60;
-  const infoY = 440;
-  const infoW = canvas.width - 120;
-  const infoH = 250;
-  ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = tableBorder;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(infoX, infoY, infoW, infoH);
-
-  ctx.fillStyle = tableHeader;
-  ctx.fillRect(infoX, infoY, infoW, 52);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 28px Arial, sans-serif';
-  ctx.fillText('THÔNG TIN KHÁCH HÀNG', infoX + 12, infoY + 36);
-
-  const labelWidth = 290;
-  ctx.strokeStyle = tableBorder;
+  ctx.fillStyle = 'rgba(37, 99, 235, 0.10)';
   ctx.beginPath();
-  ctx.moveTo(infoX + labelWidth, infoY + 52);
-  ctx.lineTo(infoX + labelWidth, infoY + infoH);
+  ctx.arc(1270, 120, 180, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(245, 158, 11, 0.12)';
+  ctx.beginPath();
+  ctx.arc(108, 1740, 160, 0, Math.PI * 2);
+  ctx.fill();
+
+  const cardX = 40;
+  const cardY = 34;
+  const cardW = canvas.width - 80;
+  const cardH = canvas.height - 68;
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#d9e3f3';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardW, cardH, 26);
+  ctx.fill();
   ctx.stroke();
 
-  for (let i = 1; i <= 4; i += 1) {
-    ctx.beginPath();
-    ctx.moveTo(infoX, infoY + 52 + i * 50);
-    ctx.lineTo(infoX + infoW, infoY + 52 + i * 50);
-    ctx.stroke();
-  }
+  const headerGradient = ctx.createLinearGradient(cardX, cardY, cardX + cardW, cardY);
+  headerGradient.addColorStop(0, theme.blueDark);
+  headerGradient.addColorStop(0.55, theme.blue);
+  headerGradient.addColorStop(1, '#2563eb');
+  ctx.fillStyle = headerGradient;
+  ctx.beginPath();
+  ctx.roundRect(cardX + 10, cardY + 10, cardW - 20, 246, 20);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.beginPath();
+  // ctx.roundRect(cardX + 26, cardY + 34, 276, 42, 21);
+  // ctx.fill();
+  ctx.font = '700 23px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  // ctx.textAlign = 'center';
+  // ctx.fillText('HÓA ĐƠN HỌC PHÍ', cardX + 164, cardY + 63);
+
+  ctx.textAlign = 'left';
+  ctx.font = '700 60px "Georgia", serif';
+  ctx.fillText(data.centerName, cardX + 40, cardY + 118);
+  ctx.font = 'italic 30px "Georgia", serif';
+  ctx.fillStyle = '#e0e7ff';
+  ctx.fillText(data.centerSlogan, cardX + 42, cardY + 164);
+
+  ctx.fillStyle = '#dbeafe';
+  ctx.font = '500 27px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.fillText(`Địa chỉ: ${data.centerAddress}`, cardX + 40, cardY + 212);
+  ctx.fillText(`Email: ${data.centerEmail}  |  Hotline: ${data.centerHotline}`, cardX + 40, cardY + 248);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 58px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.fillText('Thông báo học phí', cardX + cardW - 44, cardY + 118);
+  ctx.font = '600 29px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.fillText(`Ngày: ${formatDateVn(data.paymentDate)}`, cardX + cardW - 44, cardY + 170);
+
+  const infoX = 90;
+  const infoY = 326;
+  const infoW = canvas.width - 180;
+  const infoH = 276;
+  const labelColW = 300;
+  const infoHeaderH = 56;
+  ctx.fillStyle = theme.panel;
+  ctx.strokeStyle = theme.border;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(infoX, infoY, infoW, infoH, 16);
+  ctx.fill();
+  ctx.stroke();
+
+  const infoHeaderGrad = ctx.createLinearGradient(infoX, infoY, infoX + infoW, infoY);
+  infoHeaderGrad.addColorStop(0, '#1e40af');
+  infoHeaderGrad.addColorStop(1, '#2563eb');
+  ctx.fillStyle = infoHeaderGrad;
+  ctx.beginPath();
+  ctx.roundRect(infoX + 1, infoY + 1, infoW - 2, infoHeaderH, 14);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 29px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('THÔNG TIN KHÁCH HÀNG', infoX + 18, infoY + 37);
 
   const courseNote = `Học phí khóa học: ${formatDateVn(data.courseStartDate)} - ${formatDateVn(data.courseEndDate)}`;
   const mergedNote = data.note ? `${courseNote} | ${data.note}` : courseNote;
-
   const customerRows: Array<{ label: string; value: string }> = [
-    { label: 'Tên khách hàng:', value: data.studentName },
-    { label: 'Địa chỉ:', value: data.studentEmail || '---' },
-    { label: 'Số điện thoại:', value: data.studentPhone || '---' },
-    { label: 'Ghi chú:', value: mergedNote },
+    { label: 'Tên khách hàng', value: data.studentName },
+    { label: 'Địa chỉ', value: data.studentEmail || '---' },
+    { label: 'Số điện thoại', value: data.studentPhone || '---' },
+    { label: 'Ghi chú', value: mergedNote },
   ];
+  const rowHeights = [55, 55, 55, 55];
 
-  ctx.fillStyle = textPrimary;
-  ctx.font = '700 30px Arial, sans-serif';
+  ctx.strokeStyle = theme.border;
+  ctx.beginPath();
+  ctx.moveTo(infoX + labelColW, infoY + infoHeaderH);
+  ctx.lineTo(infoX + labelColW, infoY + infoH);
+  ctx.stroke();
+
+  let infoRowTop = infoY + infoHeaderH;
   customerRows.forEach((row, idx) => {
-    const y = infoY + 88 + idx * 50;
-    ctx.fillText(row.label, infoX + 14, y);
-    ctx.font = '500 30px Arial, sans-serif';
-    ctx.fillText(row.value, infoX + labelWidth + 14, y);
-    ctx.font = '700 30px Arial, sans-serif';
+    const rowHeight = rowHeights[idx];
+    if (idx % 2 === 1) {
+      ctx.fillStyle = '#f1f5ff';
+      ctx.fillRect(infoX + 1, infoRowTop, infoW - 2, rowHeight);
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(infoX, infoRowTop + rowHeight);
+    ctx.lineTo(infoX + infoW, infoRowTop + rowHeight);
+    ctx.strokeStyle = theme.border;
+    ctx.stroke();
+
+    ctx.fillStyle = theme.slate;
+    ctx.font = '700 24px "Segoe UI", "Trebuchet MS", sans-serif';
+    ctx.fillText(`${row.label}:`, infoX + 16, infoRowTop + 36);
+
+    ctx.fillStyle = theme.ink;
+    ctx.font = '500 24px "Segoe UI", "Trebuchet MS", sans-serif';
+    const valueMaxWidth = infoW - labelColW - 26;
+    const lines = wrapTextLines(ctx, row.value, valueMaxWidth);
+    const maxLines = idx === customerRows.length - 1 ? 2 : 1;
+    lines.slice(0, maxLines).forEach((line, lineIdx) => {
+      ctx.fillText(line, infoX + labelColW + 16, infoRowTop + 36 + lineIdx * 24);
+    });
+
+    infoRowTop += rowHeight;
   });
 
-  const itemX = 60;
-  const itemY = 790;
-  const itemW = canvas.width - 120;
-  const itemH = 510;
-  ctx.strokeStyle = tableBorder;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(itemX, itemY, itemW, itemH);
+  const itemX = 90;
+  const itemY = 640;
+  const itemW = canvas.width - 180;
+  const itemH = 500;
+  const colWidths = [100, 510, 170, 200, 240];
+  const tableHeaderH = 58;
+  const rowH = 76;
+  const rowCount = 5;
+  const totalRowH = itemH - tableHeaderH - rowCount * rowH;
 
-  const sttW = 110;
-  const infoWCol = 560;
-  const qtyW = 180;
-  const priceW = 210;
-  const totalW = itemW - sttW - infoWCol - qtyW - priceW;
-
-  ctx.fillStyle = tableHeader;
-  ctx.fillRect(itemX, itemY, itemW, 52);
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 28px Arial, sans-serif';
-  ctx.fillText('STT', itemX + 36, itemY + 36);
-  ctx.fillText('THÔNG TIN ', itemX + sttW + 12, itemY + 36);
-  ctx.fillText('SỐ LƯỢNG', itemX + sttW + infoWCol + 16, itemY + 36);
-  ctx.fillText('GIÁ TIỀN', itemX + sttW + infoWCol + qtyW + 14, itemY + 36);
-  ctx.fillText('THÀNH TIỀN', itemX + sttW + infoWCol + qtyW + priceW + 14, itemY + 36);
+  ctx.strokeStyle = '#cfd8e3';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(itemX, itemY, itemW, itemH, 16);
+  ctx.fill();
+  ctx.stroke();
 
-  const x1 = itemX + sttW;
-  const x2 = x1 + infoWCol;
-  const x3 = x2 + qtyW;
-  const x4 = x3 + priceW;
+  const tableHeaderGrad = ctx.createLinearGradient(itemX, itemY, itemX + itemW, itemY);
+  tableHeaderGrad.addColorStop(0, '#1e40af');
+  tableHeaderGrad.addColorStop(1, '#2563eb');
+  ctx.fillStyle = tableHeaderGrad;
+  ctx.beginPath();
+  ctx.roundRect(itemX + 1, itemY + 1, itemW - 2, tableHeaderH, 14);
+  ctx.fill();
 
-  ctx.strokeStyle = tableBorder;
-  [x1, x2, x3, x4].forEach((lineX) => {
+  const colTitles = ['STT', 'THÔNG TIN', 'SỐ LƯỢNG', 'GIÁ TIỀN', 'THÀNH TIỀN'];
+  const colX: number[] = [itemX];
+  colWidths.forEach((width, idx) => {
+    colX[idx + 1] = colX[idx] + width;
+  });
+  const tableGridColor = '#98a9c2';
+
+  ctx.strokeStyle = tableGridColor;
+  colX.slice(1, -1).forEach((lineX) => {
     ctx.beginPath();
     ctx.moveTo(lineX, itemY);
     ctx.lineTo(lineX, itemY + itemH);
     ctx.stroke();
   });
 
-  const items = [
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 23px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.textBaseline = 'middle';
+  colTitles.forEach((title, idx) => {
+    const start = colX[idx];
+    const width = colWidths[idx];
+    ctx.textAlign = idx === 1 ? 'left' : idx >= 3 ? 'right' : 'center';
+    if (idx === 1) {
+      ctx.fillText(title, start + 14, itemY + tableHeaderH / 2 + 1);
+    } else if (idx >= 3) {
+      ctx.fillText(title, start + width - 14, itemY + tableHeaderH / 2 + 1);
+    } else {
+      ctx.fillText(title, start + width / 2, itemY + tableHeaderH / 2 + 1);
+    }
+  });
+  ctx.textBaseline = 'alphabetic';
+
+  type InvoiceItem = {
+    stt: string;
+    description: string;
+    qty: string;
+    unitPrice: string;
+    totalPrice: string;
+  };
+  const invoiceItems: InvoiceItem[] = [
     {
       stt: '1',
       description: 'Thanh toán học phí đợt này',
@@ -761,88 +852,112 @@ export async function generateTuitionInvoiceImage(data: {
     },
   ];
 
-  const detailFont = '500 21px Arial, sans-serif';
-  const lineHeight = 26;
-  const rowPadding = 14;
-  const blankRowHeight = 76;
-  const renderedRowHeights: number[] = [];
-
-  ctx.font = detailFont;
-  items.forEach((item) => {
-    const lines = wrapTextLines(ctx, item.description, infoWCol - 26);
-    const rowHeight = Math.max(blankRowHeight, lines.length * lineHeight + rowPadding * 2 + 6);
-    renderedRowHeights.push(rowHeight);
-  });
-
-  while (renderedRowHeights.length < 5) renderedRowHeights.push(blankRowHeight);
-
-  let currentY = itemY + 52;
-  renderedRowHeights.forEach((height) => {
-    currentY += height;
+  for (let row = 0; row < rowCount; row += 1) {
+    const y = itemY + tableHeaderH + row * rowH;
+    if (row % 2 === 1) {
+      ctx.fillStyle = '#f7f9fc';
+      ctx.fillRect(itemX + 1, y, itemW - 2, rowH);
+    }
+    ctx.strokeStyle = tableGridColor;
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(itemX, currentY);
-    ctx.lineTo(itemX + itemW, currentY);
+    ctx.moveTo(itemX, y + rowH);
+    ctx.lineTo(itemX + itemW, y + rowH);
     ctx.stroke();
-  });
 
-  ctx.fillStyle = textPrimary;
-  ctx.font = detailFont;
+    const item = invoiceItems[row];
+    if (!item) continue;
 
-  let rowTop = itemY + 52;
-  items.forEach((item, idx) => {
-    const rowHeight = renderedRowHeights[idx];
-    const lines = wrapTextLines(ctx, item.description, infoWCol - 26);
-    const baseY = rowTop + rowPadding + 16;
-
+    ctx.textBaseline = 'middle';
+    ctx.font = '500 21px "Segoe UI", "Trebuchet MS", sans-serif';
+    ctx.fillStyle = theme.ink;
     ctx.textAlign = 'center';
-    ctx.fillText(item.stt, itemX + sttW / 2, rowTop + rowHeight / 2 + 7);
+    ctx.fillText(item.stt, colX[0] + colWidths[0] / 2, y + rowH / 2 + 1);
 
     ctx.textAlign = 'left';
-    lines.forEach((line, lineIdx) => {
-      ctx.fillText(line, x1 + 12, baseY + lineIdx * lineHeight);
+    ctx.font = '500 21px "Segoe UI", "Trebuchet MS", sans-serif';
+    const contentLines = wrapTextLines(ctx, item.description, colWidths[1] - 26);
+    const lineHeight = 24;
+    const startY = y + rowH / 2 - ((contentLines.length - 1) * lineHeight) / 2;
+    contentLines.slice(0, 2).forEach((line, lineIdx) => {
+      ctx.fillText(line, colX[1] + 12, startY + lineIdx * lineHeight);
     });
 
     ctx.textAlign = 'center';
-    ctx.fillText(item.qty, x2 + qtyW / 2, rowTop + rowHeight / 2 + 7);
-
+    ctx.fillText(item.qty, colX[2] + colWidths[2] / 2, y + rowH / 2 + 1);
     ctx.textAlign = 'right';
-    ctx.fillText(item.unitPrice, x4 - 14, rowTop + rowHeight / 2 + 7);
-    ctx.fillText(item.totalPrice, itemX + itemW - 14, rowTop + rowHeight / 2 + 7);
+    ctx.fillText(item.unitPrice, colX[3] + colWidths[3] - 14, y + rowH / 2 + 1);
+    ctx.fillText(item.totalPrice, colX[4] + colWidths[4] - 14, y + rowH / 2 + 1);
+    ctx.textBaseline = 'alphabetic';
+  }
 
-    rowTop += rowHeight;
+  const totalY = itemY + tableHeaderH + rowCount * rowH;
+  // Redraw body vertical grid after row fills so cell borders stay visible.
+  ctx.strokeStyle = tableGridColor;
+  ctx.lineWidth = 1.2;
+  colX.slice(1, -1).forEach((lineX) => {
+    ctx.beginPath();
+    ctx.moveTo(lineX, itemY + tableHeaderH);
+    ctx.lineTo(lineX, totalY);
+    ctx.stroke();
   });
 
-  const tableBottom = rowTop + renderedRowHeights.slice(items.length).reduce((sum, h) => sum + h, 0);
-  const totalRowY = tableBottom;
-  const totalRowH = blankRowHeight;
-  const totalLabelText = 'TỔNG TIỀN THANH TOÁN';
-  const totalAmountText = formatMoneyVnd(data.amountPaid);
+  const totalLabelW = colX[4] - itemX;
+  const totalValueW = itemW - totalLabelW;
+  const totalRowGrad = ctx.createLinearGradient(itemX, totalY, itemX + itemW, totalY);
+  totalRowGrad.addColorStop(0, '#f59e0b');
+  totalRowGrad.addColorStop(1, '#f59e0b');
+  ctx.fillStyle = totalRowGrad;
+  ctx.fillRect(itemX + 1, totalY, itemW - 2, totalRowH - 1);
 
-  // Render as plain bold text in the existing table cells (no extra shape to avoid visual offset).
-  ctx.fillStyle = textPrimary;
+  ctx.fillStyle = '#ffffff';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold 14px Arial, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText(totalLabelText, x3 + 10, totalRowY + totalRowH / 2);
-
-  ctx.font = 'bold 14px Arial, sans-serif';
+  ctx.font = '700 24px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('TỔNG TIỀN THANH TOÁN', itemX + totalLabelW / 2, totalY + totalRowH / 2 + 1);
   ctx.textAlign = 'right';
-  ctx.fillText(totalAmountText, itemX + itemW - 8, totalRowY + totalRowH / 2);
+  ctx.font = '800 34px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.fillText(formatMoneyVnd(data.amountPaid), itemX + itemW - 16, totalY + totalRowH / 2 + 1);
   ctx.textBaseline = 'alphabetic';
 
+  const bankInfoTop = itemY + itemH + 48;
+  const bankCardX = 90;
+  const bankCardW = 850;
+  const bankCardH = 245;
+  ctx.fillStyle = '#f8fbff';
+  ctx.strokeStyle = theme.border;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(bankCardX, bankInfoTop, bankCardW, bankCardH, 16);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = theme.blue;
+  ctx.font = '700 26px "Segoe UI", "Trebuchet MS", sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillStyle = textPrimary;
-  ctx.font = 'bold 34px Arial, sans-serif';
-  const bankInfoTop = totalRowY + totalRowH + 90;
-  ctx.fillText(`Chủ TK: ${data.bankAccountName}`, 80, bankInfoTop);
-  ctx.fillText(`SỐ TK: ${data.bankAccountNumber}`, 80, bankInfoTop + 52);
-  ctx.fillText(data.bankName, 80, bankInfoTop + 104);
+  ctx.fillText('THÔNG TIN CHUYỂN KHOẢN', bankCardX + 18, bankInfoTop + 38);
+  ctx.fillStyle = theme.ink;
+  ctx.font = '600 30px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.fillText(`Chủ TK: ${data.bankAccountName}`, bankCardX + 18, bankInfoTop + 96);
+  ctx.fillText(`SỐ TK: ${data.bankAccountNumber}`, bankCardX + 18, bankInfoTop + 146);
+  ctx.fillText(data.bankName, bankCardX + 18, bankInfoTop + 196);
 
   const qrCandidates = buildQrCandidates(data.qrImagePath);
   const qrImage = await loadFirstAvailableImage(qrCandidates);
 
-  const qrX = canvas.width - 350;
-  const qrY = bankInfoTop - 50;
+  const qrBoxX = canvas.width - 380;
+  const qrBoxY = bankInfoTop;
+  const qrBoxSize = 290;
+  ctx.fillStyle = '#f8fbff';
+  ctx.strokeStyle = theme.border;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 16);
+  ctx.fill();
+  ctx.stroke();
+
+  const qrX = qrBoxX + 25;
+  const qrY = qrBoxY + 25;
   if (qrImage) {
     const prevSmoothing = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
@@ -852,21 +967,33 @@ export async function generateTuitionInvoiceImage(data: {
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(qrX, qrY, 240, 240);
     ctx.fillStyle = '#64748b';
-    ctx.font = 'bold 20px Arial, sans-serif';
+    ctx.font = '700 20px "Segoe UI", "Trebuchet MS", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('CHƯA CÓ QR', qrX + 120, qrY + 128);
     ctx.textAlign = 'left';
   }
-  // ctx.strokeStyle = '#10b981';
-  // ctx.lineWidth = 2;
-  // ctx.strokeRect(qrX - 8, qrY - 8, 256, 256);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '600 18px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Quét QR để thanh toán nhanh', qrBoxX + qrBoxSize / 2, qrBoxY + qrBoxSize + 28);
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#374151';
-  ctx.font = '600 30px Arial, sans-serif';
-  ctx.fillText('Nếu có thắc mắc xin vui lòng liên hệ 034 930 3368.', canvas.width / 2, 1810);
-  ctx.font = 'italic bold 46px Georgia, serif';
-  ctx.fillText('Chân thành cảm ơn!', canvas.width / 2, 1860);
+  const footerY = 1778;
+  const footerGrad = ctx.createLinearGradient(cardX + 10, footerY, cardX + cardW - 10, footerY);
+  footerGrad.addColorStop(0, '#1e40af');
+  footerGrad.addColorStop(1, '#2563eb');
+  ctx.fillStyle = footerGrad;
+  ctx.beginPath();
+  ctx.roundRect(cardX + 10, footerY, cardW - 20, 86, 14);
+  ctx.fill();
+
+  ctx.fillStyle = '#dbeafe';
+  ctx.font = '600 26px "Segoe UI", "Trebuchet MS", sans-serif';
+  ctx.fillText('Nếu có thắc mắc xin vui lòng liên hệ 034 930 3368.', canvas.width / 2, footerY + 36);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'italic 700 36px Georgia, serif';
+  ctx.fillText('Chân thành cảm ơn!', canvas.width / 2, footerY + 74);
 
   return canvas.toDataURL('image/png');
 }
