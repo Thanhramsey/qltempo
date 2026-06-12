@@ -578,6 +578,32 @@ async function loadFirstAvailableImage(paths: string[]): Promise<HTMLImageElemen
   return null;
 }
 
+function normalizeAssetPath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+
+  const noLeadingSlash = trimmed.replace(/^\/+/, '');
+  const baseUrl = import.meta.env.BASE_URL || '/';
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  return `${normalizedBase}${noLeadingSlash}`;
+}
+
+function buildQrCandidates(qrImagePath?: string): string[] {
+  const defaults = ['tuition-qr.png', 'tuition-qr.jpg', 'tuition-qr.jpeg', 'qr.png', 'qr.jpg', 'qr.jpeg'];
+  const rawCandidates = [qrImagePath, ...defaults];
+  const normalized = rawCandidates
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .flatMap((value) => {
+      const normalizedPath = normalizeAssetPath(value);
+      return [value, normalizedPath].filter((candidate): candidate is string => Boolean(candidate));
+    });
+
+  return Array.from(new Set(normalized));
+}
+
 export async function generateTuitionInvoiceImage(data: {
   centerName: string;
   centerSlogan: string;
@@ -812,15 +838,7 @@ export async function generateTuitionInvoiceImage(data: {
   ctx.fillText(`SỐ TK: ${data.bankAccountNumber}`, 80, bankInfoTop + 52);
   ctx.fillText(data.bankName, 80, bankInfoTop + 104);
 
-  const qrCandidates = [
-    data.qrImagePath,
-    '/tuition-qr.png',
-    '/tuition-qr.jpg',
-    '/tuition-qr.jpeg',
-    '/qr.png',
-    '/qr.jpg',
-    '/qr.jpeg',
-  ].filter((value): value is string => Boolean(value));
+  const qrCandidates = buildQrCandidates(data.qrImagePath);
   const qrImage = await loadFirstAvailableImage(qrCandidates);
 
   const qrX = canvas.width - 350;

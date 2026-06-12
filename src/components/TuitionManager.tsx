@@ -454,6 +454,8 @@ export default function TuitionManager({
       const courseStartDate = selectedStudent.joinDate || paymentDate || today;
       const courseEndDate = addMonthsToYmd(courseStartDate, 3);
 
+      const qrImagePath = `${import.meta.env.BASE_URL}tuition-qr.png`;
+
       const invoiceDataUrl = await generateTuitionInvoiceImage({
         centerName: 'TEMPO',
         centerSlogan: 'Music can change your life',
@@ -473,7 +475,7 @@ export default function TuitionManager({
         sessionsTarget: selectedCycleSessionsTarget,
         tuitionAmount: selectedCycleFee,
         amountPaid,
-        qrImagePath: '/tuition-qr.png',
+        qrImagePath,
         note,
       });
 
@@ -497,6 +499,8 @@ export default function TuitionManager({
       const courseStartDate = selectedStudent.joinDate || paymentDate || today;
       const courseEndDate = addMonthsToYmd(courseStartDate, 3);
 
+      const qrImagePath = `${import.meta.env.BASE_URL}tuition-qr.png`;
+
       const invoiceDataUrl = await generateTuitionInvoiceImage({
         centerName: 'TEMPO',
         centerSlogan: 'Music can change your life',
@@ -516,7 +520,7 @@ export default function TuitionManager({
         sessionsTarget: selectedCycleSessionsTarget,
         tuitionAmount: selectedCycleFee,
         amountPaid,
-        qrImagePath: '/tuition-qr.png',
+        qrImagePath,
         note,
       });
 
