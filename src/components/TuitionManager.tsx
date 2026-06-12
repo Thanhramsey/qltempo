@@ -5,11 +5,12 @@ import { exportToCSV } from '../utils/csvExport';
 import { downloadStudentTuitionSnapshotImage, generateStudentTuitionSnapshotImage } from '../utils/canvasReceipt';
 import ToastMessage, { ToastType } from './ui/ToastMessage';
 import {
+  EXCUSED_ABSENCE_FREE_SESSIONS,
+  UNEXCUSED_ABSENCE_FREE_SESSIONS,
   TUITION_CYCLE_OPTIONS,
   getMaxCycleIndexFromSessions,
   getStudentCycleSessions,
   getStudentCycleProgress,
-  getStudentPresentAttendances,
   getTuitionCycleConfig,
 } from '../utils/tuitionCycle';
 
@@ -122,6 +123,7 @@ export default function TuitionManager({
       const progress = getStudentCycleProgress(
         attendances,
         student.id,
+        student.tuitionCycleType,
         config.sessionsTarget,
         config.warningFromSession
       );
@@ -155,6 +157,7 @@ export default function TuitionManager({
         const progress = getStudentCycleProgress(
           attendances,
           student.id,
+          student.tuitionCycleType,
           config.sessionsTarget,
           config.warningFromSession
         );
@@ -167,6 +170,7 @@ export default function TuitionManager({
           attendances,
           student.id,
           targetCycleIndex,
+          student.tuitionCycleType,
           config.sessionsTarget
         );
 
@@ -252,33 +256,64 @@ export default function TuitionManager({
   };
 
   const refreshSnapshotPreview = (row: TuitionRow) => {
-    const countingHistory = getStudentPresentAttendances(attendances, row.student.id);
     const sessionsTarget = getRowSessionsTarget(row);
-    const cycleStart = (row.cycleIndex - 1) * sessionsTarget;
-    const cycleCountingSessions = countingHistory.slice(cycleStart, cycleStart + sessionsTarget);
+    const studentHistory = attendances
+      .filter((att) => att.studentId === row.student.id)
+      .sort((a, b) => {
+        const byDate = a.date.localeCompare(b.date);
+        if (byDate !== 0) return byDate;
+        return (a.updatedAt || '').localeCompare(b.updatedAt || '');
+      });
 
-    // Date range of this cycle based on counting sessions (present + unexcused)
-    const cycleStartDate = cycleCountingSessions[0]?.date ?? null;
-    const cycleEndDate =
-      cycleCountingSessions.length >= sessionsTarget
-        ? cycleCountingSessions[cycleCountingSessions.length - 1].date
-        : new Date().toISOString().split('T')[0];
+    let countedSessionsSoFar = 0;
+    let excusedAbsenceCount = 0;
+    let unexcusedAbsenceCount = 0;
+    let isPenaltyModeActive = false;
 
-    // All attendance records (all statuses) within the cycle date range
-    const allCycleAttendances = cycleStartDate
-      ? attendances
-          .filter(
-            (att) =>
-              att.studentId === row.student.id &&
-              att.date >= cycleStartDate &&
-              att.date <= cycleEndDate
-          )
-          .sort((a, b) => {
-            const byDate = a.date.localeCompare(b.date);
-            if (byDate !== 0) return byDate;
-            return (a.updatedAt || '').localeCompare(b.updatedAt || '');
-          })
-      : [];
+    const allCycleAttendances = studentHistory.reduce<Array<Attendance & { allowanceNote?: string }>>((acc, att) => {
+      const cycleIndexForThisAttendance = Math.floor(countedSessionsSoFar / sessionsTarget) + 1;
+      let isCountedSession = false;
+      let allowanceNote = '';
+
+      if (att.status === 'present') {
+        isCountedSession = true;
+      } else if (att.status === 'absent_excused') {
+        excusedAbsenceCount += 1;
+
+        if (isPenaltyModeActive) {
+          isCountedSession = true;
+        } else if (excusedAbsenceCount > EXCUSED_ABSENCE_FREE_SESSIONS) {
+          isPenaltyModeActive = true;
+          isCountedSession = true;
+        } else {
+          allowanceNote = `Vắng có phép trong phạm vi cho phép (${excusedAbsenceCount}/${EXCUSED_ABSENCE_FREE_SESSIONS})`;
+        }
+      } else if (att.status === 'absent_unexcused') {
+        unexcusedAbsenceCount += 1;
+
+        if (isPenaltyModeActive) {
+          isCountedSession = true;
+        } else if (unexcusedAbsenceCount > UNEXCUSED_ABSENCE_FREE_SESSIONS) {
+          isPenaltyModeActive = true;
+          isCountedSession = true;
+        } else {
+          allowanceNote = `Vắng không phép trong phạm vi cho phép (${unexcusedAbsenceCount}/${UNEXCUSED_ABSENCE_FREE_SESSIONS})`;
+        }
+      }
+
+      if (cycleIndexForThisAttendance === row.cycleIndex) {
+        acc.push({
+          ...att,
+          allowanceNote: allowanceNote || undefined,
+        });
+      }
+
+      if (isCountedSession) {
+        countedSessionsSoFar += 1;
+      }
+
+      return acc;
+    }, []);
 
     const buildShiftLabel = (shift?: Shift) => {
       if (!shift) return '';
@@ -327,6 +362,7 @@ export default function TuitionManager({
           date: session.date,
           shiftLabel,
           status: session.status,
+          note: session.allowanceNote,
         };
       }),
     });
@@ -398,7 +434,7 @@ export default function TuitionManager({
       'Loại Chu Kỳ',
       'Chu Kỳ',
       'Tiến Độ Buổi',
-      'Tổng Buổi Đã Học',
+      'Tổng Buổi Được Tính',
       'Học Phí Chu Kỳ',
       'Đã Đóng',
       'Còn Nợ',

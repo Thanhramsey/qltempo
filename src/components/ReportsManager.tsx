@@ -69,6 +69,7 @@ export default function ReportsManager({ students, shifts, attendances, payments
         const progress = getStudentCycleProgress(
           attendances,
           student.id,
+          student.tuitionCycleType,
           cycleConfig.sessionsTarget,
           cycleConfig.warningFromSession
         );

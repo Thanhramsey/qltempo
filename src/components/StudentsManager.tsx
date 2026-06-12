@@ -30,8 +30,11 @@ import {
 } from 'lucide-react';
 import { exportStudentsList } from '../utils/csvExport';
 import {
+  EXCUSED_ABSENCE_FREE_SESSIONS,
+  UNEXCUSED_ABSENCE_FREE_SESSIONS,
   DEFAULT_TUITION_CYCLE_TYPE,
   TUITION_CYCLE_OPTIONS,
+  getStudentAbsenceSummary,
   getStudentCycleProgress,
   getTuitionCycleConfig,
 } from '../utils/tuitionCycle';
@@ -411,6 +414,20 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
     exportStudentsList(filteredStudents, shifts);
   };
 
+  const absenceSummaryByStudent = useMemo(() => {
+    const summaryMap: Record<string, ReturnType<typeof getStudentAbsenceSummary>> = {};
+
+    students.forEach((student) => {
+      summaryMap[student.id] = getStudentAbsenceSummary(
+        attendances,
+        student.id,
+        student.tuitionCycleType
+      );
+    });
+
+    return summaryMap;
+  }, [students, attendances]);
+
   const historyRows = useMemo(() => {
     if (!historyStudent) return [];
 
@@ -666,9 +683,16 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                     return shifts.find(s => s.id === shId);
                   }).filter(Boolean);
                   const cycleConfig = getTuitionCycleConfig(student.tuitionCycleType);
+                  const absenceSummary = absenceSummaryByStudent[student.id] || {
+                    excusedAbsenceCount: 0,
+                    unexcusedAbsenceCount: 0,
+                    hasReachedExcusedThreshold: false,
+                    hasReachedUnexcusedThreshold: false,
+                  };
                   const progress = getStudentCycleProgress(
                     attendances,
                     student.id,
+                    student.tuitionCycleType,
                     cycleConfig.sessionsTarget,
                     cycleConfig.warningFromSession
                   );
@@ -770,8 +794,34 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                           <div className={`text-[10px] mt-1 font-semibold ${progress.isNearCycleEnd ? 'text-amber-700' : 'text-slate-500'}`}>
                             {progress.isNearCycleEnd
                               ? `Sắp đủ khóa, còn ${progress.sessionsRemaining} buổi`
-                              : `Đã học tổng ${progress.totalPresentSessions} buổi`}
+                              : `Đã được tính tổng ${progress.totalPresentSessions} buổi`}
                           </div>
+                          {(absenceSummary.hasReachedExcusedThreshold || absenceSummary.hasReachedUnexcusedThreshold) && (
+                            <div className="mt-2 space-y-1">
+                              {absenceSummary.hasReachedExcusedThreshold && (
+                                <div className={`rounded-md border px-2 py-1 text-[10px] font-bold ${
+                                  absenceSummary.excusedAbsenceCount > EXCUSED_ABSENCE_FREE_SESSIONS
+                                    ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                    : 'border-amber-200 bg-amber-50 text-amber-700'
+                                }`}>
+                                  {absenceSummary.excusedAbsenceCount > EXCUSED_ABSENCE_FREE_SESSIONS
+                                    ? `Cảnh báo: Vắng có phép ${absenceSummary.excusedAbsenceCount}/${EXCUSED_ABSENCE_FREE_SESSIONS} (vượt ngưỡng)`
+                                    : `Cảnh báo: Vắng có phép ${absenceSummary.excusedAbsenceCount}/${EXCUSED_ABSENCE_FREE_SESSIONS} (chạm ngưỡng)`}
+                                </div>
+                              )}
+                              {absenceSummary.hasReachedUnexcusedThreshold && (
+                                <div className={`rounded-md border px-2 py-1 text-[10px] font-bold ${
+                                  absenceSummary.unexcusedAbsenceCount > UNEXCUSED_ABSENCE_FREE_SESSIONS
+                                    ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                    : 'border-amber-200 bg-amber-50 text-amber-700'
+                                }`}>
+                                  {absenceSummary.unexcusedAbsenceCount > UNEXCUSED_ABSENCE_FREE_SESSIONS
+                                    ? `Cảnh báo: Vắng không phép ${absenceSummary.unexcusedAbsenceCount}/${UNEXCUSED_ABSENCE_FREE_SESSIONS} (vượt ngưỡng)`
+                                    : `Cảnh báo: Vắng không phép ${absenceSummary.unexcusedAbsenceCount}/${UNEXCUSED_ABSENCE_FREE_SESSIONS} (chạm ngưỡng)`}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 font-mono text-xs text-slate-500">

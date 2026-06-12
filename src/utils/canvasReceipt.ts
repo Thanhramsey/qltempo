@@ -219,17 +219,17 @@ export function generateStudentTuitionSnapshotImage(data: {
     reportHeaderBgColor?: string;
     extraLines?: string[];
   };
-  sessions: Array<{ date: string; shiftLabel: string; status?: string }>;
+  sessions: Array<{ date: string; shiftLabel: string; status?: string; note?: string }>;
 }): string {
   const sessionsToRender = data.sessions;
   const tableX = 50;
   const tableWidth = 800;
   const tableHeaderHeight = 34;
-  const rowHeight = 28;
+  const minRowHeight = 28;
   const sttColWidth = 60;
   const dateColWidth = 120;
-  const shiftColWidth = 490;
-  const rowCount = Math.max(sessionsToRender.length, 1);
+  const shiftColWidth = 390;
+  const statusColWidth = tableWidth - sttColWidth - dateColWidth - shiftColWidth;
   const shouldShowPhone = data.customization?.showPhone ?? true;
   const shouldShowCycleProgress = data.customization?.showCycleProgress ?? true;
   const shouldShowTuitionAmounts = data.customization?.showTuitionAmounts ?? true;
@@ -243,6 +243,47 @@ export function generateStudentTuitionSnapshotImage(data: {
   const extraLines = (data.customization?.extraLines || []).map((line) => line.trim()).filter(Boolean);
   const debt = Math.max(data.totalAmount - data.amountPaid, 0);
 
+  const wrapTextLines = (text: string, maxWidth: number, font: string): string[] => {
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return [text];
+
+    tempCtx.font = font;
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+
+    words.forEach((word) => {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      if (tempCtx.measureText(testLine).width <= maxWidth) {
+        currentLine = testLine;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+      }
+    });
+
+    if (currentLine) lines.push(currentLine);
+    return lines.length > 0 ? lines : [''];
+  };
+
+  const sessionRows = sessionsToRender.map((session) => {
+    const isUnexcused = session.status === 'absent_unexcused';
+    const isExcused = session.status === 'absent_excused';
+    const baseStatusLabel = isUnexcused ? 'Vắng KP' : isExcused ? 'Vắng phép' : 'Có mặt';
+    const statusLabel = session.note ? `${baseStatusLabel} - ${session.note}` : baseStatusLabel;
+    const statusLines = wrapTextLines(statusLabel, statusColWidth - 16, '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif');
+    const rowHeight = Math.max(minRowHeight, statusLines.length * 16 + 10);
+
+    return {
+      session,
+      isUnexcused,
+      isExcused,
+      statusLines,
+      rowHeight,
+    };
+  });
+
   const infoPanelX = 30;
   const infoPanelY = 145;
   const infoPanelWidth = 840;
@@ -255,7 +296,7 @@ export function generateStudentTuitionSnapshotImage(data: {
   if (shouldShowCycleProgress) {
     infoLines.push(`Chu kỳ hiện tại: ${data.cycleIndex}`);
     infoLines.push(
-      `Tiến độ chu kỳ: ${data.currentCycleSessions}/${data.sessionsTarget} buổi (Tổng đã học: ${data.totalPresentSessions} buổi)`
+      `Tiến độ chu kỳ: ${data.currentCycleSessions}/${data.sessionsTarget} buổi (Tổng buổi được tính: ${data.totalPresentSessions} buổi)`
     );
   }
   if (shouldShowTuitionAmounts) {
@@ -275,7 +316,10 @@ export function generateStudentTuitionSnapshotImage(data: {
   }
   if (shouldShowNote) detailLines.push(`Ghi chú: ${data.note || '---'}`);
 
-  const tableHeight = tableHeaderHeight + rowCount * rowHeight;
+  const tableBodyHeight = sessionRows.length > 0
+    ? sessionRows.reduce((sum, row) => sum + row.rowHeight, 0)
+    : minRowHeight;
+  const tableHeight = tableHeaderHeight + tableBodyHeight;
   const tableBottomY = tableY + tableHeight;
 
   const badgeY = tableBottomY + 70;
@@ -396,44 +440,44 @@ export function generateStudentTuitionSnapshotImage(data: {
 
   // Body rows
   ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-  sessionsToRender.forEach((session, idx) => {
-    const rowTop = tableY + tableHeaderHeight + idx * rowHeight;
-    const rowCenterY = rowTop + 19;
+  let rowTop = tableY + tableHeaderHeight;
+  sessionRows.forEach((row, idx) => {
+    const rowCenterY = rowTop + row.rowHeight / 2 + 5;
 
-    const isUnexcused = session.status === 'absent_unexcused';
-    const isExcused = session.status === 'absent_excused';
-
-    if (isUnexcused) {
+    if (row.isUnexcused) {
       ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
-      ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, rowHeight);
-    } else if (isExcused) {
+      ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, row.rowHeight);
+    } else if (row.isExcused) {
       ctx.fillStyle = 'rgba(245, 158, 11, 0.08)';
-      ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, rowHeight);
+      ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, row.rowHeight);
     } else if (idx % 2 === 0) {
       ctx.fillStyle = 'rgba(99, 102, 241, 0.05)';
-      ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, rowHeight);
+      ctx.fillRect(tableX + 1, rowTop, tableWidth - 2, row.rowHeight);
     }
 
     ctx.strokeStyle = '#eef2ff';
     ctx.beginPath();
-    ctx.moveTo(tableX, rowTop + rowHeight);
-    ctx.lineTo(tableX + tableWidth, rowTop + rowHeight);
+    ctx.moveTo(tableX, rowTop + row.rowHeight);
+    ctx.lineTo(tableX + tableWidth, rowTop + row.rowHeight);
     ctx.stroke();
 
     ctx.fillStyle = customTextColor;
     ctx.fillText(String(idx + 1), tableX + 18, rowCenterY);
-    ctx.fillText(session.date.split('-').reverse().join('/'), col1X + 8, rowCenterY);
-    ctx.fillText(session.shiftLabel, col2X + 8, rowCenterY);
+    ctx.fillText(row.session.date.split('-').reverse().join('/'), col1X + 8, rowCenterY);
+    ctx.fillText(row.session.shiftLabel, col2X + 8, rowCenterY);
 
-    const statusLabel = isUnexcused ? 'Vắng KP' : isExcused ? 'Vắng phép' : 'Có mặt';
-    ctx.fillStyle = isUnexcused ? '#dc2626' : isExcused ? '#d97706' : '#16a34a';
-    ctx.fillText(statusLabel, col3X + 8, rowCenterY);
+    ctx.fillStyle = row.isUnexcused ? '#dc2626' : row.isExcused ? '#d97706' : '#16a34a';
+    row.statusLines.forEach((line, lineIndex) => {
+      ctx.fillText(line, col3X + 8, rowTop + 18 + lineIndex * 16);
+    });
+
+    rowTop += row.rowHeight;
   });
 
   if (sessionsToRender.length === 0) {
     ctx.fillStyle = '#94a3b8';
     ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillText('Chưa có buổi học có mặt nào trong chu kỳ này.', tableX + 18, tableY + tableHeaderHeight + 19);
+    ctx.fillText('Chưa có buổi điểm danh nào trong chu kỳ này.', tableX + 18, tableY + tableHeaderHeight + 19);
   }
 
   const badgeX = 640;
@@ -504,7 +548,7 @@ export function exportStudentTuitionSnapshot(data: {
     reportHeaderBgColor?: string;
     extraLines?: string[];
   };
-  sessions: Array<{ date: string; shiftLabel: string; status?: string }>;
+  sessions: Array<{ date: string; shiftLabel: string; status?: string; note?: string }>;
 }) {
   const dataUrl = generateStudentTuitionSnapshotImage(data);
   const fileName = `BaoCao_${data.studentName.replace(/\s+/g, '_')}_chu_ky_${data.cycleIndex}.png`;
@@ -521,12 +565,12 @@ export function generateStudentAttendanceRangeImage(data: {
   excusedCount: number;
   unexcusedCount: number;
   shiftBreakdown: Array<{ shiftLabel: string; presentCount: number; totalCount: number }>;
-}) {
+}): string {
   const canvas = document.createElement('canvas');
   canvas.width = 1000;
   canvas.height = 920;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  if (!ctx) return '';
 
   const bg = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
   bg.addColorStop(0, '#f8fafc');

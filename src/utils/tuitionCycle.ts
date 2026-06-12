@@ -7,6 +7,18 @@ export const SHORT_CYCLE_SESSION_TARGET = 8;
 export const SHORT_CYCLE_FEE_VND = 800_000;
 export const SHORT_CYCLE_WARNING_FROM_SESSION = 6;
 
+// For 24-session cycle
+export const COURSE_EXCUSED_ABSENCE_FREE_SESSIONS = 6;
+export const COURSE_UNEXCUSED_ABSENCE_FREE_SESSIONS = 2;
+
+// For 8-session cycle
+export const SHORT_CYCLE_EXCUSED_ABSENCE_FREE_SESSIONS = 2;
+export const SHORT_CYCLE_UNEXCUSED_ABSENCE_FREE_SESSIONS = 1;
+
+// Legacy exports for backward compatibility
+export const EXCUSED_ABSENCE_FREE_SESSIONS = COURSE_EXCUSED_ABSENCE_FREE_SESSIONS;
+export const UNEXCUSED_ABSENCE_FREE_SESSIONS = COURSE_UNEXCUSED_ABSENCE_FREE_SESSIONS;
+
 export const DEFAULT_TUITION_CYCLE_TYPE: TuitionCycleType = 'cycle_24';
 
 export interface TuitionCycleConfig {
@@ -62,23 +74,113 @@ export interface CycleSessionsSlice {
   sessionsCount: number;
 }
 
-export function getStudentPresentAttendances(attendances: Attendance[], studentId: string): Attendance[] {
-  return attendances
-    .filter((att) => att.studentId === studentId && (att.status === 'present' || att.status === 'absent_unexcused'))
+export interface StudentAbsenceSummary {
+  excusedAbsenceCount: number;
+  unexcusedAbsenceCount: number;
+  hasReachedExcusedThreshold: boolean;
+  hasReachedUnexcusedThreshold: boolean;
+}
+
+function getAbsenceThresholds(cycleType: TuitionCycleType = 'cycle_24') {
+  if (cycleType === 'cycle_8') {
+    return {
+      excusedFree: SHORT_CYCLE_EXCUSED_ABSENCE_FREE_SESSIONS,
+      unexcusedFree: SHORT_CYCLE_UNEXCUSED_ABSENCE_FREE_SESSIONS,
+    };
+  }
+  return {
+    excusedFree: COURSE_EXCUSED_ABSENCE_FREE_SESSIONS,
+    unexcusedFree: COURSE_UNEXCUSED_ABSENCE_FREE_SESSIONS,
+  };
+}
+
+export function getStudentAbsenceSummary(
+  attendances: Attendance[],
+  studentId: string,
+  cycleType: TuitionCycleType = 'cycle_24'
+): StudentAbsenceSummary {
+  let excusedAbsenceCount = 0;
+  let unexcusedAbsenceCount = 0;
+  const thresholds = getAbsenceThresholds(cycleType);
+
+  attendances.forEach((att) => {
+    if (att.studentId !== studentId) return;
+
+    if (att.status === 'absent_excused') {
+      excusedAbsenceCount += 1;
+      return;
+    }
+
+    if (att.status === 'absent_unexcused') {
+      unexcusedAbsenceCount += 1;
+    }
+  });
+
+  return {
+    excusedAbsenceCount,
+    unexcusedAbsenceCount,
+    hasReachedExcusedThreshold: excusedAbsenceCount >= thresholds.excusedFree,
+    hasReachedUnexcusedThreshold: unexcusedAbsenceCount >= thresholds.unexcusedFree,
+  };
+}
+
+export function getStudentPresentAttendances(
+  attendances: Attendance[],
+  studentId: string,
+  cycleType: TuitionCycleType = 'cycle_24'
+): Attendance[] {
+  const thresholds = getAbsenceThresholds(cycleType);
+  const history = attendances
+    .filter((att) => att.studentId === studentId)
     .sort((a, b) => {
       const byDate = a.date.localeCompare(b.date);
       if (byDate !== 0) return byDate;
       return a.updatedAt.localeCompare(b.updatedAt);
     });
+
+  let excusedAbsenceCount = 0;
+  let unexcusedAbsenceCount = 0;
+  let isPenaltyModeActive = false;
+
+  return history.filter((att) => {
+    if (att.status === 'present') return true;
+
+    if (att.status === 'absent_excused') {
+      excusedAbsenceCount += 1;
+      if (isPenaltyModeActive) return true;
+
+      if (excusedAbsenceCount > thresholds.excusedFree) {
+        isPenaltyModeActive = true;
+        return true;
+      }
+
+      return false;
+    }
+
+    if (att.status === 'absent_unexcused') {
+      unexcusedAbsenceCount += 1;
+      if (isPenaltyModeActive) return true;
+
+      if (unexcusedAbsenceCount > thresholds.unexcusedFree) {
+        isPenaltyModeActive = true;
+        return true;
+      }
+
+      return false;
+    }
+
+    return false;
+  });
 }
 
 export function getStudentCycleProgress(
   attendances: Attendance[],
   studentId: string,
+  cycleType: TuitionCycleType = 'cycle_24',
   sessionsTarget: number = COURSE_SESSION_TARGET,
   warningFromSession: number = COURSE_WARNING_FROM_SESSION
 ): StudentCycleProgress {
-  const totalPresentSessions = getStudentPresentAttendances(attendances, studentId).length;
+  const totalPresentSessions = getStudentPresentAttendances(attendances, studentId, cycleType).length;
   const completedCycles = Math.floor(totalPresentSessions / sessionsTarget);
   const currentCycleSessions = totalPresentSessions % sessionsTarget;
 
@@ -97,9 +199,10 @@ export function getStudentCycleSessions(
   attendances: Attendance[],
   studentId: string,
   cycleIndex: number,
+  cycleType: TuitionCycleType = 'cycle_24',
   sessionsTarget: number = COURSE_SESSION_TARGET
 ): CycleSessionsSlice {
-  const history = getStudentPresentAttendances(attendances, studentId);
+  const history = getStudentPresentAttendances(attendances, studentId, cycleType);
   const cycleStart = Math.max(0, (cycleIndex - 1) * sessionsTarget);
   const sessions = history.slice(cycleStart, cycleStart + sessionsTarget);
 
