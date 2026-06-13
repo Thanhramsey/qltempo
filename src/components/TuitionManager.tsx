@@ -11,8 +11,7 @@ import {
 } from '../utils/canvasReceipt';
 import ToastMessage, { ToastType } from './ui/ToastMessage';
 import {
-  EXCUSED_ABSENCE_FREE_SESSIONS,
-  UNEXCUSED_ABSENCE_FREE_SESSIONS,
+  getAbsenceThresholds,
   TUITION_CYCLE_OPTIONS,
   getMaxCycleIndexFromSessions,
   getStudentCycleSessions,
@@ -275,6 +274,7 @@ export default function TuitionManager({
 
   const refreshSnapshotPreview = (row: TuitionRow) => {
     const sessionsTarget = getRowSessionsTarget(row);
+    const thresholds = getAbsenceThresholds(row.student.tuitionCycleType);
     const studentHistory = attendances
       .filter((att) => att.studentId === row.student.id)
       .sort((a, b) => {
@@ -286,9 +286,8 @@ export default function TuitionManager({
     let countedSessionsSoFar = 0;
     let excusedAbsenceCount = 0;
     let unexcusedAbsenceCount = 0;
-    let isPenaltyModeActive = false;
 
-    const allCycleAttendances = studentHistory.reduce<Array<Attendance & { allowanceNote?: string }>>((acc, att) => {
+    const allCycleAttendances = studentHistory.reduce<Array<Attendance & { allowanceNote?: string; isViolationCounted?: boolean }>>((acc, att) => {
       const cycleIndexForThisAttendance = Math.floor(countedSessionsSoFar / sessionsTarget) + 1;
       let isCountedSession = false;
       let allowanceNote = '';
@@ -298,31 +297,28 @@ export default function TuitionManager({
       } else if (att.status === 'absent_excused') {
         excusedAbsenceCount += 1;
 
-        if (isPenaltyModeActive) {
-          isCountedSession = true;
-        } else if (excusedAbsenceCount > EXCUSED_ABSENCE_FREE_SESSIONS) {
-          isPenaltyModeActive = true;
+        if (excusedAbsenceCount > thresholds.excusedFree) {
           isCountedSession = true;
         } else {
-          allowanceNote = `Vắng có phép trong phạm vi cho phép (${excusedAbsenceCount}/${EXCUSED_ABSENCE_FREE_SESSIONS})`;
+          allowanceNote = `Vắng có phép trong phạm vi cho phép (${excusedAbsenceCount}/${thresholds.excusedFree})`;
         }
       } else if (att.status === 'absent_unexcused') {
         unexcusedAbsenceCount += 1;
 
-        if (isPenaltyModeActive) {
-          isCountedSession = true;
-        } else if (unexcusedAbsenceCount > UNEXCUSED_ABSENCE_FREE_SESSIONS) {
-          isPenaltyModeActive = true;
+        if (unexcusedAbsenceCount > thresholds.unexcusedFree) {
           isCountedSession = true;
         } else {
-          allowanceNote = `Vắng không phép trong phạm vi cho phép (${unexcusedAbsenceCount}/${UNEXCUSED_ABSENCE_FREE_SESSIONS})`;
+          allowanceNote = `Vắng không phép trong phạm vi cho phép (${unexcusedAbsenceCount}/${thresholds.unexcusedFree})`;
         }
       }
 
       if (cycleIndexForThisAttendance === row.cycleIndex) {
+        const isViolationCounted =
+          isCountedSession && (att.status === 'absent_excused' || att.status === 'absent_unexcused');
         acc.push({
           ...att,
           allowanceNote: allowanceNote || undefined,
+          isViolationCounted,
         });
       }
 
@@ -375,12 +371,14 @@ export default function TuitionManager({
       sessions: allCycleAttendances.map((session) => {
         const shift = shifts.find((sh) => sh.id === session.shiftId);
         const shiftLabel = shift ? buildShiftLabel(shift) : session.shiftId;
+        const statusForPreview = session.isViolationCounted ? 'present' : session.status;
 
         return {
           date: session.date,
           shiftLabel,
-          status: session.status,
+          status: statusForPreview,
           note: session.allowanceNote,
+          isConvertedPresent: Boolean(session.isViolationCounted),
         };
       }),
     });

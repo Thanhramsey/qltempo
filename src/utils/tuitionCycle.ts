@@ -81,7 +81,7 @@ export interface StudentAbsenceSummary {
   hasReachedUnexcusedThreshold: boolean;
 }
 
-function getAbsenceThresholds(cycleType: TuitionCycleType = 'cycle_24') {
+export function getAbsenceThresholds(cycleType: TuitionCycleType = 'cycle_24') {
   if (cycleType === 'cycle_8') {
     return {
       excusedFree: SHORT_CYCLE_EXCUSED_ABSENCE_FREE_SESSIONS,
@@ -140,33 +140,18 @@ export function getStudentPresentAttendances(
 
   let excusedAbsenceCount = 0;
   let unexcusedAbsenceCount = 0;
-  let isPenaltyModeActive = false;
 
   return history.filter((att) => {
     if (att.status === 'present') return true;
 
     if (att.status === 'absent_excused') {
       excusedAbsenceCount += 1;
-      if (isPenaltyModeActive) return true;
-
-      if (excusedAbsenceCount > thresholds.excusedFree) {
-        isPenaltyModeActive = true;
-        return true;
-      }
-
-      return false;
+      return excusedAbsenceCount > thresholds.excusedFree;
     }
 
     if (att.status === 'absent_unexcused') {
       unexcusedAbsenceCount += 1;
-      if (isPenaltyModeActive) return true;
-
-      if (unexcusedAbsenceCount > thresholds.unexcusedFree) {
-        isPenaltyModeActive = true;
-        return true;
-      }
-
-      return false;
+      return unexcusedAbsenceCount > thresholds.unexcusedFree;
     }
 
     return false;
