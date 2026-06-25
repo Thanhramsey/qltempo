@@ -1,25 +1,27 @@
-import { Attendance, Student, TuitionCycleType } from '../types';
+import { Attendance, Student, TuitionCycleConfigRecord, TuitionCycleType } from '../types';
 
-export const COURSE_SESSION_TARGET = 24;
-export const COURSE_FEE_VND = 2_400_000;
-export const COURSE_WARNING_FROM_SESSION = 20;
-export const SHORT_CYCLE_SESSION_TARGET = 8;
-export const SHORT_CYCLE_FEE_VND = 800_000;
-export const SHORT_CYCLE_WARNING_FROM_SESSION = 6;
-
-// For 24-session cycle
-export const COURSE_EXCUSED_ABSENCE_FREE_SESSIONS = 6;
-export const COURSE_UNEXCUSED_ABSENCE_FREE_SESSIONS = 2;
-
-// For 8-session cycle
-export const SHORT_CYCLE_EXCUSED_ABSENCE_FREE_SESSIONS = 2;
-export const SHORT_CYCLE_UNEXCUSED_ABSENCE_FREE_SESSIONS = 1;
-
-// Legacy exports for backward compatibility
-export const EXCUSED_ABSENCE_FREE_SESSIONS = COURSE_EXCUSED_ABSENCE_FREE_SESSIONS;
-export const UNEXCUSED_ABSENCE_FREE_SESSIONS = COURSE_UNEXCUSED_ABSENCE_FREE_SESSIONS;
-
-export const DEFAULT_TUITION_CYCLE_TYPE: TuitionCycleType = 'cycle_24';
+export const DEFAULT_TUITION_CYCLE_CONFIGS: TuitionCycleConfigRecord[] = [
+  {
+    id: 'cycle_24',
+    name: 'Chu ky 24 buoi',
+    sessionsTarget: 24,
+    feeVnd: 2_400_000,
+    excusedAbsenceFree: 6,
+    unexcusedAbsenceFree: 2,
+    warningFromSession: 20,
+    createdAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+  },
+  {
+    id: 'cycle_8',
+    name: 'Chu ky 8 buoi',
+    sessionsTarget: 8,
+    feeVnd: 800_000,
+    excusedAbsenceFree: 2,
+    unexcusedAbsenceFree: 1,
+    warningFromSession: 6,
+    createdAt: new Date('2026-01-01T00:00:01Z').toISOString(),
+  },
+];
 
 export interface TuitionCycleConfig {
   type: TuitionCycleType;
@@ -27,37 +29,73 @@ export interface TuitionCycleConfig {
   feeVnd: number;
   warningFromSession: number;
   label: string;
+  name: string;
+  excusedAbsenceFree: number;
+  unexcusedAbsenceFree: number;
 }
 
-export const TUITION_CYCLE_CONFIGS: Record<TuitionCycleType, TuitionCycleConfig> = {
-  cycle_24: {
-    type: 'cycle_24',
-    sessionsTarget: COURSE_SESSION_TARGET,
-    feeVnd: COURSE_FEE_VND,
-    warningFromSession: COURSE_WARNING_FROM_SESSION,
-    label: '2.400.000đ / 24 buổi',
-  },
-  cycle_8: {
-    type: 'cycle_8',
-    sessionsTarget: SHORT_CYCLE_SESSION_TARGET,
-    feeVnd: SHORT_CYCLE_FEE_VND,
-    warningFromSession: SHORT_CYCLE_WARNING_FROM_SESSION,
-    label: '800.000đ / 8 buổi',
-  },
+const toPositiveInt = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.floor(parsed));
 };
 
-export const TUITION_CYCLE_OPTIONS: TuitionCycleConfig[] = [
-  TUITION_CYCLE_CONFIGS.cycle_24,
-  TUITION_CYCLE_CONFIGS.cycle_8,
-];
+function normalizeConfig(record: TuitionCycleConfigRecord): TuitionCycleConfig {
+  const sessionsTarget = toPositiveInt(record.sessionsTarget, 24);
+  const feeVnd = Math.max(0, Math.floor(Number(record.feeVnd) || 0));
+  const excusedAbsenceFree = Math.max(0, Math.floor(Number(record.excusedAbsenceFree) || 0));
+  const unexcusedAbsenceFree = Math.max(0, Math.floor(Number(record.unexcusedAbsenceFree) || 0));
+  const warningFromSession = Math.min(
+    sessionsTarget,
+    toPositiveInt(record.warningFromSession, Math.max(1, sessionsTarget - 4))
+  );
 
-export function resolveStudentTuitionCycleType(student?: Pick<Student, 'tuitionCycleType'>): TuitionCycleType {
-  return student?.tuitionCycleType || DEFAULT_TUITION_CYCLE_TYPE;
+  return {
+    type: record.id,
+    sessionsTarget,
+    feeVnd,
+    warningFromSession,
+    name: record.name || `Chu ky ${sessionsTarget} buoi`,
+    label: `${(record.name || `Chu ky ${sessionsTarget} buoi`).trim()} (${feeVnd.toLocaleString()}d / ${sessionsTarget} buoi)`,
+    excusedAbsenceFree,
+    unexcusedAbsenceFree,
+  };
 }
 
-export function getTuitionCycleConfig(cycleType?: TuitionCycleType): TuitionCycleConfig {
-  const safeType = cycleType || DEFAULT_TUITION_CYCLE_TYPE;
-  return TUITION_CYCLE_CONFIGS[safeType] || TUITION_CYCLE_CONFIGS[DEFAULT_TUITION_CYCLE_TYPE];
+export function getTuitionCycleOptions(
+  cycleConfigs: TuitionCycleConfigRecord[] = DEFAULT_TUITION_CYCLE_CONFIGS
+): TuitionCycleConfig[] {
+  if (!cycleConfigs || cycleConfigs.length === 0) {
+    return DEFAULT_TUITION_CYCLE_CONFIGS.map(normalizeConfig);
+  }
+
+  return cycleConfigs
+    .filter((item) => item && item.id)
+    .map(normalizeConfig);
+}
+
+export const TUITION_CYCLE_OPTIONS: TuitionCycleConfig[] = getTuitionCycleOptions();
+export const DEFAULT_TUITION_CYCLE_TYPE: TuitionCycleType = DEFAULT_TUITION_CYCLE_CONFIGS[0].id;
+
+export function resolveStudentTuitionCycleType(
+  student?: Pick<Student, 'tuitionCycleType'>,
+  cycleConfigs: TuitionCycleConfigRecord[] = DEFAULT_TUITION_CYCLE_CONFIGS
+): TuitionCycleType {
+  const options = getTuitionCycleOptions(cycleConfigs);
+  const fallback = options[0]?.type || DEFAULT_TUITION_CYCLE_TYPE;
+  const selected = student?.tuitionCycleType;
+  if (!selected) return fallback;
+  return options.some((option) => option.type === selected) ? selected : fallback;
+}
+
+export function getTuitionCycleConfig(
+  cycleType?: TuitionCycleType,
+  cycleConfigs: TuitionCycleConfigRecord[] = DEFAULT_TUITION_CYCLE_CONFIGS
+): TuitionCycleConfig {
+  const options = getTuitionCycleOptions(cycleConfigs);
+  const fallback = options[0] || normalizeConfig(DEFAULT_TUITION_CYCLE_CONFIGS[0]);
+  if (!cycleType) return fallback;
+  return options.find((item) => item.type === cycleType) || fallback;
 }
 
 export interface StudentCycleProgress {
@@ -81,27 +119,26 @@ export interface StudentAbsenceSummary {
   hasReachedUnexcusedThreshold: boolean;
 }
 
-export function getAbsenceThresholds(cycleType: TuitionCycleType = 'cycle_24') {
-  if (cycleType === 'cycle_8') {
-    return {
-      excusedFree: SHORT_CYCLE_EXCUSED_ABSENCE_FREE_SESSIONS,
-      unexcusedFree: SHORT_CYCLE_UNEXCUSED_ABSENCE_FREE_SESSIONS,
-    };
-  }
+export function getAbsenceThresholds(
+  cycleType?: TuitionCycleType,
+  cycleConfigs: TuitionCycleConfigRecord[] = DEFAULT_TUITION_CYCLE_CONFIGS
+) {
+  const config = getTuitionCycleConfig(cycleType, cycleConfigs);
   return {
-    excusedFree: COURSE_EXCUSED_ABSENCE_FREE_SESSIONS,
-    unexcusedFree: COURSE_UNEXCUSED_ABSENCE_FREE_SESSIONS,
+    excusedFree: config.excusedAbsenceFree,
+    unexcusedFree: config.unexcusedAbsenceFree,
   };
 }
 
 export function getStudentAbsenceSummary(
   attendances: Attendance[],
   studentId: string,
-  cycleType: TuitionCycleType = 'cycle_24'
+  cycleType?: TuitionCycleType,
+  cycleConfigs: TuitionCycleConfigRecord[] = DEFAULT_TUITION_CYCLE_CONFIGS
 ): StudentAbsenceSummary {
   let excusedAbsenceCount = 0;
   let unexcusedAbsenceCount = 0;
-  const thresholds = getAbsenceThresholds(cycleType);
+  const thresholds = getAbsenceThresholds(cycleType, cycleConfigs);
 
   attendances.forEach((att) => {
     if (att.studentId !== studentId) return;
@@ -127,9 +164,10 @@ export function getStudentAbsenceSummary(
 export function getStudentPresentAttendances(
   attendances: Attendance[],
   studentId: string,
-  cycleType: TuitionCycleType = 'cycle_24'
+  cycleType?: TuitionCycleType,
+  cycleConfigs: TuitionCycleConfigRecord[] = DEFAULT_TUITION_CYCLE_CONFIGS
 ): Attendance[] {
-  const thresholds = getAbsenceThresholds(cycleType);
+  const thresholds = getAbsenceThresholds(cycleType, cycleConfigs);
   const history = attendances
     .filter((att) => att.studentId === studentId)
     .sort((a, b) => {
@@ -161,22 +199,25 @@ export function getStudentPresentAttendances(
 export function getStudentCycleProgress(
   attendances: Attendance[],
   studentId: string,
-  cycleType: TuitionCycleType = 'cycle_24',
-  sessionsTarget: number = COURSE_SESSION_TARGET,
-  warningFromSession: number = COURSE_WARNING_FROM_SESSION
+  cycleType: TuitionCycleType | undefined,
+  sessionsTarget: number,
+  warningFromSession: number,
+  cycleConfigs: TuitionCycleConfigRecord[] = DEFAULT_TUITION_CYCLE_CONFIGS
 ): StudentCycleProgress {
-  const totalPresentSessions = getStudentPresentAttendances(attendances, studentId, cycleType).length;
-  const completedCycles = Math.floor(totalPresentSessions / sessionsTarget);
-  const currentCycleSessions = totalPresentSessions % sessionsTarget;
+  const totalPresentSessions = getStudentPresentAttendances(attendances, studentId, cycleType, cycleConfigs).length;
+  const safeSessionsTarget = Math.max(1, sessionsTarget);
+  const safeWarningFromSession = Math.max(1, Math.min(warningFromSession, safeSessionsTarget));
+  const completedCycles = Math.floor(totalPresentSessions / safeSessionsTarget);
+  const currentCycleSessions = totalPresentSessions % safeSessionsTarget;
 
   return {
     totalPresentSessions,
     completedCycles,
     currentCycleIndex: completedCycles + 1,
     currentCycleSessions,
-    sessionsRemaining: sessionsTarget - currentCycleSessions,
+    sessionsRemaining: safeSessionsTarget - currentCycleSessions,
     isNearCycleEnd:
-      currentCycleSessions >= warningFromSession && currentCycleSessions < sessionsTarget,
+      currentCycleSessions >= safeWarningFromSession && currentCycleSessions < safeSessionsTarget,
   };
 }
 
@@ -184,12 +225,14 @@ export function getStudentCycleSessions(
   attendances: Attendance[],
   studentId: string,
   cycleIndex: number,
-  cycleType: TuitionCycleType = 'cycle_24',
-  sessionsTarget: number = COURSE_SESSION_TARGET
+  cycleType: TuitionCycleType | undefined,
+  sessionsTarget: number,
+  cycleConfigs: TuitionCycleConfigRecord[] = DEFAULT_TUITION_CYCLE_CONFIGS
 ): CycleSessionsSlice {
-  const history = getStudentPresentAttendances(attendances, studentId, cycleType);
-  const cycleStart = Math.max(0, (cycleIndex - 1) * sessionsTarget);
-  const sessions = history.slice(cycleStart, cycleStart + sessionsTarget);
+  const history = getStudentPresentAttendances(attendances, studentId, cycleType, cycleConfigs);
+  const safeSessionsTarget = Math.max(1, sessionsTarget);
+  const cycleStart = Math.max(0, (cycleIndex - 1) * safeSessionsTarget);
+  const sessions = history.slice(cycleStart, cycleStart + safeSessionsTarget);
 
   return {
     sessions,
@@ -199,8 +242,9 @@ export function getStudentCycleSessions(
 
 export function getMaxCycleIndexFromSessions(
   totalPresentSessions: number,
-  sessionsTarget: number = COURSE_SESSION_TARGET
+  sessionsTarget: number
 ): number {
-  const completedCycles = Math.floor(totalPresentSessions / sessionsTarget);
+  const safeSessionsTarget = Math.max(1, sessionsTarget);
+  const completedCycles = Math.floor(totalPresentSessions / safeSessionsTarget);
   return completedCycles + 1;
 }

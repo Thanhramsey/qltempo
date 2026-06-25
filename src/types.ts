@@ -21,6 +21,17 @@ export interface Student {
   createdAt: string;
 }
 
+export interface TuitionCycleConfigRecord {
+  id: string;
+  name: string;
+  sessionsTarget: number;
+  feeVnd: number;
+  excusedAbsenceFree: number;
+  unexcusedAbsenceFree: number;
+  warningFromSession: number;
+  createdAt: string;
+}
+
 export type AttendanceStatus = 'present' | 'absent_excused' | 'absent_unexcused';
 
 export interface Attendance {
@@ -34,7 +45,7 @@ export interface Attendance {
 }
 
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
-export type TuitionCycleType = 'cycle_24' | 'cycle_8';
+export type TuitionCycleType = string;
 
 export interface UserAccount {
   id: string;

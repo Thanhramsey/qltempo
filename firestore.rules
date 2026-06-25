@@ -81,6 +81,18 @@ service cloud.firestore {
              (data.get("createdAt", "") is string);
     }
 
+    // Tuition cycle config validation
+    function isValidTuitionCycleConfig(data) {
+      return isValidId(data.id) &&
+             isValidString(data.name, 1, 120) &&
+             (data.sessionsTarget is number) && data.sessionsTarget >= 1 &&
+             (data.feeVnd is number) && data.feeVnd >= 0 &&
+             (data.excusedAbsenceFree is number) && data.excusedAbsenceFree >= 0 &&
+             (data.unexcusedAbsenceFree is number) && data.unexcusedAbsenceFree >= 0 &&
+             (data.warningFromSession is number) && data.warningFromSession >= 1 &&
+             (data.get("createdAt", "") is string);
+    }
+
     // Collection matching
     match /shifts/{shiftId} {
       allow read: if isSignedIn();
@@ -110,6 +122,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, update: if isSignedIn() && isValidId(userId) && isValidUser(request.resource.data);
       allow delete: if isSignedIn() && isValidId(userId);
+    }
+
+    match /tuitionCycleConfigs/{configId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(configId) && isValidTuitionCycleConfig(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(configId);
     }
   }
 }

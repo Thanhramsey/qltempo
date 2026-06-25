@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Shift, Student, Payment, PaymentStatus, Attendance } from '../types';
+import { Shift, Student, Payment, PaymentStatus, Attendance, TuitionCycleConfigRecord } from '../types';
 import { CircleDollarSign, Edit3, Image, Download, Search, CheckCircle, AlertTriangle, Coins, X, Loader2 } from 'lucide-react';
 import { exportToCSV } from '../utils/csvExport';
 import {
@@ -12,18 +12,19 @@ import {
 import ToastMessage, { ToastType } from './ui/ToastMessage';
 import {
   getAbsenceThresholds,
-  TUITION_CYCLE_OPTIONS,
+  getTuitionCycleOptions,
   getMaxCycleIndexFromSessions,
   getStudentCycleSessions,
   getStudentCycleProgress,
   getTuitionCycleConfig,
-} from '../utils/tuitionCycle';
+} from '../utils/tuitionCycle.ts';
 
 interface TuitionManagerProps {
   shifts: Shift[];
   students: Student[];
   attendances: Attendance[];
   payments: Payment[];
+  cycleConfigs: TuitionCycleConfigRecord[];
   onUpdatePayment: (payment: Omit<Payment, 'updatedAt'>) => Promise<void>;
   loadingPayments: boolean;
 }
@@ -88,9 +89,11 @@ export default function TuitionManager({
   students,
   attendances,
   payments,
+  cycleConfigs,
   onUpdatePayment,
   loadingPayments,
 }: TuitionManagerProps) {
+  const tuitionCycleOptions = useMemo(() => getTuitionCycleOptions(cycleConfigs), [cycleConfigs]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCycleFilter, setSelectedCycleFilter] = useState<string>('current');
   const [selectedPackageFilter, setSelectedPackageFilter] = useState<string>('all');
@@ -136,13 +139,14 @@ export default function TuitionManager({
   const maxCycleIndex = useMemo(() => {
     let maxFromProgress = 1;
     students.forEach((student) => {
-      const config = getTuitionCycleConfig(student.tuitionCycleType);
+      const config = getTuitionCycleConfig(student.tuitionCycleType, cycleConfigs);
       const progress = getStudentCycleProgress(
         attendances,
         student.id,
         student.tuitionCycleType,
         config.sessionsTarget,
-        config.warningFromSession
+        config.warningFromSession,
+        cycleConfigs
       );
       maxFromProgress = Math.max(
         maxFromProgress,
@@ -155,12 +159,12 @@ export default function TuitionManager({
     }, 1);
 
     return Math.max(maxFromProgress, maxFromPayments);
-  }, [students, attendances, payments]);
+  }, [students, attendances, payments, cycleConfigs]);
 
   const tuitionRows: TuitionRow[] = useMemo(() => {
     return students
       .filter((student) => {
-        const config = getTuitionCycleConfig(student.tuitionCycleType);
+        const config = getTuitionCycleConfig(student.tuitionCycleType, cycleConfigs);
         const q = searchQuery.toLowerCase();
         const matchesSearch =
           !searchQuery ||
@@ -170,13 +174,14 @@ export default function TuitionManager({
         return matchesSearch && matchesPackage;
       })
       .map((student) => {
-        const config = getTuitionCycleConfig(student.tuitionCycleType);
+        const config = getTuitionCycleConfig(student.tuitionCycleType, cycleConfigs);
         const progress = getStudentCycleProgress(
           attendances,
           student.id,
           student.tuitionCycleType,
           config.sessionsTarget,
-          config.warningFromSession
+          config.warningFromSession,
+          cycleConfigs
         );
         const targetCycleIndex =
           selectedCycleFilter === 'current' ? progress.currentCycleIndex : Number(selectedCycleFilter);
@@ -188,7 +193,8 @@ export default function TuitionManager({
           student.id,
           targetCycleIndex,
           student.tuitionCycleType,
-          config.sessionsTarget
+          config.sessionsTarget,
+          cycleConfigs
         );
 
         return {
@@ -211,7 +217,7 @@ export default function TuitionManager({
 
         return row.cycleSessions > 0 || !!row.payment;
       });
-  }, [students, attendances, payments, searchQuery, selectedCycleFilter, selectedPackageFilter]);
+  }, [students, attendances, payments, searchQuery, selectedCycleFilter, selectedPackageFilter, cycleConfigs]);
 
   const handleOpenPayment = (row: TuitionRow) => {
     if (row.isLocked) {
@@ -274,7 +280,7 @@ export default function TuitionManager({
 
   const refreshSnapshotPreview = (row: TuitionRow) => {
     const sessionsTarget = getRowSessionsTarget(row);
-    const thresholds = getAbsenceThresholds(row.student.tuitionCycleType);
+    const thresholds = getAbsenceThresholds(row.student.tuitionCycleType, cycleConfigs);
     const studentHistory = attendances
       .filter((att) => att.studentId === row.student.id)
       .sort((a, b) => {
@@ -602,7 +608,7 @@ export default function TuitionManager({
             Học Phí Theo Chu Kỳ Buổi Học
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Học phí tính theo chu kỳ đã gán trên hồ sơ học sinh: 24 buổi/2.400.000đ hoặc 8 buổi/800.000đ.
+            Học phí tính theo loại chu kỳ đã gán trên hồ sơ học sinh và cấu hình tại menu Loại Chu Kỳ.
           </p>
           <p className="text-xs text-amber-600 mt-1 font-semibold">
             Rule tự động: chu kỳ cũ sẽ khóa khi học sinh đạt đủ số buổi của gói, hệ thống mở chu kỳ mới ngay lập tức.
@@ -638,7 +644,7 @@ export default function TuitionManager({
 
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-            Lọc theo chu kỳ
+            Lọc theo số lần chu kỳ
           </label>
           <select
             value={selectedCycleFilter}
@@ -656,15 +662,15 @@ export default function TuitionManager({
 
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-            Lọc theo gói
+            Lọc theo loại chu kỳ
           </label>
           <select
             value={selectedPackageFilter}
             onChange={(e) => setSelectedPackageFilter(e.target.value)}
             className="tempo-select w-full px-3.5 py-2 rounded-xl text-slate-700 text-sm font-medium h-9.5 bg-white"
           >
-            <option value="all">Tất cả gói</option>
-            {TUITION_CYCLE_OPTIONS.map((option) => (
+            <option value="all">Tất cả loại chu kỳ</option>
+            {tuitionCycleOptions.map((option: { type: string; label: string }) => (
               <option key={option.type} value={option.type}>
                 {option.label}
               </option>
@@ -675,7 +681,7 @@ export default function TuitionManager({
         <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 flex items-center justify-between">
           <div>
             <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Các gói chu kỳ đang hỗ trợ</div>
-            <div className="text-sm font-bold text-indigo-800">{TUITION_CYCLE_OPTIONS.map((option) => option.label).join(' | ')}</div>
+            <div className="text-sm font-bold text-indigo-800">{tuitionCycleOptions.map((option: { label: string }) => option.label).join(' | ')}</div>
           </div>
           {loadingPayments && <Loader2 size={18} className="animate-spin text-indigo-500" />}
         </div>

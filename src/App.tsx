@@ -15,7 +15,7 @@ import {
   query,
   getDocFromServer
 } from 'firebase/firestore';
-import { Shift, Student, Attendance, Payment, UserAccount } from './types';
+import { Shift, Student, Attendance, Payment, UserAccount, TuitionCycleConfigRecord } from './types';
 
 // Icons
 import {
@@ -32,7 +32,8 @@ import {
   Menu,
   X,
   Shield,
-  BookOpen
+  BookOpen,
+  Settings2
 } from 'lucide-react';
 
 // Components
@@ -42,9 +43,11 @@ import ShiftsManager from './components/ShiftsManager';
 import StudentsManager from './components/StudentsManager';
 import AttendanceTracker from './components/AttendanceTracker';
 import TuitionManager from './components/TuitionManager';
+import TuitionCycleTypesManager from './components/TuitionCycleTypesManager';
 import UsersManager from './components/UsersManager';
 import ReportsManager from './components/ReportsManager';
 import UsageGuide from './components/UsageGuide';
+import { DEFAULT_TUITION_CYCLE_CONFIGS } from './utils/tuitionCycle';
 
 const DEMO_KEY_PREFIX = 'edutrack_demo_';
 
@@ -178,6 +181,7 @@ export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [tuitionCycleConfigs, setTuitionCycleConfigs] = useState<TuitionCycleConfigRecord[]>([]);
 
   // Navigation tabs
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -187,6 +191,7 @@ export default function App() {
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [loadingAttendances, setLoadingAttendances] = useState(false);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [loadingTuitionCycles, setLoadingTuitionCycles] = useState(false);
 
   // 1. Auth Listener
   useEffect(() => {
@@ -250,6 +255,7 @@ export default function App() {
       setLoadingStudents(true);
       setLoadingAttendances(true);
       setLoadingPayments(true);
+      setLoadingTuitionCycles(true);
       setLoadingUsers(true);
 
       // A. Shifts
@@ -300,7 +306,29 @@ export default function App() {
         handleFirestoreError(err, OperationType.GET, 'payments');
       });
 
-      // E. Custom Users
+      // E. Tuition cycle configs
+      const unsubTuitionCycles = onSnapshot(collection(db, 'tuitionCycleConfigs'), (snapshot) => {
+        const list: TuitionCycleConfigRecord[] = [];
+        snapshot.forEach((doc) => list.push(doc.data() as TuitionCycleConfigRecord));
+
+        if (list.length === 0) {
+          DEFAULT_TUITION_CYCLE_CONFIGS.forEach(async (config) => {
+            try {
+              await setDoc(doc(db, 'tuitionCycleConfigs', config.id), config);
+            } catch (err) {
+              console.error('Auto seeding tuition cycle config in Firestore failed:', err);
+            }
+          });
+          setTuitionCycleConfigs(DEFAULT_TUITION_CYCLE_CONFIGS);
+        } else {
+          setTuitionCycleConfigs(list.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+        }
+        setLoadingTuitionCycles(false);
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, 'tuitionCycleConfigs');
+      });
+
+      // F. Custom Users
       const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
         const list: UserAccount[] = [];
         snapshot.forEach(doc => list.push(doc.data() as UserAccount));
@@ -328,6 +356,7 @@ export default function App() {
         unsubStudents();
         unsubAttendances();
         unsubPayments();
+        unsubTuitionCycles();
         unsubUsers();
       };
     } else if (bypassAuth) {
@@ -336,6 +365,7 @@ export default function App() {
       const localStudentsStr = localStorage.getItem(`${DEMO_KEY_PREFIX}students`);
       const localAttendancesStr = localStorage.getItem(`${DEMO_KEY_PREFIX}attendances`);
       const localPaymentsStr = localStorage.getItem(`${DEMO_KEY_PREFIX}payments`);
+      const localTuitionCycleConfigsStr = localStorage.getItem(`${DEMO_KEY_PREFIX}tuitionCycleConfigs`);
       const localUsersStr = localStorage.getItem(`${DEMO_KEY_PREFIX}users`);
 
       if (localShiftsStr) {
@@ -367,6 +397,12 @@ export default function App() {
       if (localPaymentsStr) setPayments(JSON.parse(localPaymentsStr));
       else setPayments([]);
 
+      if (localTuitionCycleConfigsStr) setTuitionCycleConfigs(JSON.parse(localTuitionCycleConfigsStr));
+      else {
+        setTuitionCycleConfigs(DEFAULT_TUITION_CYCLE_CONFIGS);
+        localStorage.setItem(`${DEMO_KEY_PREFIX}tuitionCycleConfigs`, JSON.stringify(DEFAULT_TUITION_CYCLE_CONFIGS));
+      }
+
       if (localUsersStr) setUsersList(JSON.parse(localUsersStr));
       else {
         setUsersList(SEED_USERS);
@@ -377,6 +413,7 @@ export default function App() {
       setLoadingStudents(false);
       setLoadingAttendances(false);
       setLoadingPayments(false);
+      setLoadingTuitionCycles(false);
       setLoadingUsers(false);
     }
   }, [isOnline, bypassAuth, user, currentUserAccount]);
@@ -632,7 +669,70 @@ export default function App() {
     }
   };
 
-  // E. User Accounts Mutations
+  // E. Tuition cycle config mutations
+  const handleAddCycleConfig = async (payload: Omit<TuitionCycleConfigRecord, 'id' | 'createdAt'>) => {
+    const id = `cycle_${Math.random().toString(36).substring(2, 11)}`;
+    const record: TuitionCycleConfigRecord = {
+      ...payload,
+      id,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (isOnline) {
+      const path = `tuitionCycleConfigs/${id}`;
+      try {
+        await setDoc(doc(db, 'tuitionCycleConfigs', id), record);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, path);
+      }
+    } else {
+      const updated = [...tuitionCycleConfigs, record].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      setTuitionCycleConfigs(updated);
+      localStorage.setItem(`${DEMO_KEY_PREFIX}tuitionCycleConfigs`, JSON.stringify(updated));
+    }
+  };
+
+  const handleEditCycleConfig = async (payload: TuitionCycleConfigRecord) => {
+    if (isOnline) {
+      const path = `tuitionCycleConfigs/${payload.id}`;
+      try {
+        await setDoc(doc(db, 'tuitionCycleConfigs', payload.id), payload);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, path);
+      }
+    } else {
+      const updated = tuitionCycleConfigs
+        .map((item) => (item.id === payload.id ? payload : item))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      setTuitionCycleConfigs(updated);
+      localStorage.setItem(`${DEMO_KEY_PREFIX}tuitionCycleConfigs`, JSON.stringify(updated));
+    }
+  };
+
+  const handleDeleteCycleConfig = async (id: string) => {
+    if (tuitionCycleConfigs.length <= 1) {
+      throw new Error('At least one tuition cycle config is required.');
+    }
+
+    if (students.some((student) => student.tuitionCycleType === id)) {
+      throw new Error('Cannot delete cycle config currently used by students.');
+    }
+
+    if (isOnline) {
+      const path = `tuitionCycleConfigs/${id}`;
+      try {
+        await deleteDoc(doc(db, 'tuitionCycleConfigs', id));
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, path);
+      }
+    } else {
+      const updated = tuitionCycleConfigs.filter((item) => item.id !== id);
+      setTuitionCycleConfigs(updated);
+      localStorage.setItem(`${DEMO_KEY_PREFIX}tuitionCycleConfigs`, JSON.stringify(updated));
+    }
+  };
+
+  // F. User Accounts Mutations
   const handleAddUser = async (userInput: Omit<UserAccount, 'id' | 'createdAt'>) => {
     const id = 'usr_' + Math.random().toString(36).substring(2, 11);
     const newUser: UserAccount = {
@@ -780,6 +880,7 @@ export default function App() {
     { id: 'students', label: 'Học Sinh', icon: Users },
     { id: 'attendance', label: 'Điểm Danh', icon: CheckSquare },
     { id: 'tuition', label: 'Ghi Học Phí', icon: CircleDollarSign },
+    { id: 'tuition-cycles', label: 'Loại Chu Kỳ', icon: Settings2 },
     { id: 'reports', label: 'Báo Cáo', icon: BarChart3 },
     { id: 'guide', label: 'Hướng Dẫn', icon: BookOpen },
   ];
@@ -951,6 +1052,7 @@ export default function App() {
               shifts={shifts}
               attendances={attendances}
               payments={payments}
+              cycleConfigs={tuitionCycleConfigs}
             />
           )}
 
@@ -963,6 +1065,7 @@ export default function App() {
               students={students}
               shifts={shifts}
               attendances={attendances}
+              cycleConfigs={tuitionCycleConfigs}
               onAddStudent={handleAddStudent}
               onEditStudent={handleEditStudent}
               onDeleteStudent={handleDeleteStudent}
@@ -989,8 +1092,21 @@ export default function App() {
               students={students}
               attendances={attendances}
               payments={payments}
+              cycleConfigs={tuitionCycleConfigs}
               onUpdatePayment={handleUpdatePayment}
-              loadingPayments={loadingPayments}
+              loadingPayments={loadingPayments || loadingTuitionCycles}
+            />
+          )}
+
+          {activeTab === 'tuition-cycles' && (
+            <TuitionCycleTypesManager
+              cycleConfigs={tuitionCycleConfigs}
+              onAddCycleConfig={handleAddCycleConfig}
+              onEditCycleConfig={handleEditCycleConfig}
+              onDeleteCycleConfig={handleDeleteCycleConfig}
+              studentsUsingConfigCount={(configId) =>
+                students.filter((student) => student.tuitionCycleType === configId).length
+              }
             />
           )}
 

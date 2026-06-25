@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Student, Shift, Attendance, TuitionCycleType } from '../types';
+import { Student, Shift, Attendance, TuitionCycleType, TuitionCycleConfigRecord } from '../types';
 import {
   Users,
   Plus,
@@ -30,14 +30,13 @@ import {
 } from 'lucide-react';
 import { exportStudentsList } from '../utils/csvExport';
 import {
-  EXCUSED_ABSENCE_FREE_SESSIONS,
-  UNEXCUSED_ABSENCE_FREE_SESSIONS,
   DEFAULT_TUITION_CYCLE_TYPE,
-  TUITION_CYCLE_OPTIONS,
+  getTuitionCycleOptions,
+  getAbsenceThresholds,
   getStudentAbsenceSummary,
   getStudentCycleProgress,
   getTuitionCycleConfig,
-} from '../utils/tuitionCycle';
+} from '../utils/tuitionCycle.ts';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import ToastMessage, { ToastType } from './ui/ToastMessage';
@@ -47,6 +46,7 @@ interface StudentsManagerProps {
   students: Student[];
   shifts: Shift[];
   attendances: Attendance[];
+  cycleConfigs: TuitionCycleConfigRecord[];
   onAddStudent: (student: Omit<Student, 'id' | 'createdAt'>) => Promise<void>;
   onEditStudent: (student: Student) => Promise<void>;
   onDeleteStudent: (id: string) => Promise<void>;
@@ -170,7 +170,7 @@ function getShiftTheme(shiftId: string) {
   return SHIFT_COLOR_THEMES[hash % SHIFT_COLOR_THEMES.length];
 }
 
-export default function StudentsManager({ students, shifts, attendances, onAddStudent, onEditStudent, onDeleteStudent, onSaveAttendance, onDeleteAttendance }: StudentsManagerProps) {
+export default function StudentsManager({ students, shifts, attendances, cycleConfigs, onAddStudent, onEditStudent, onDeleteStudent, onSaveAttendance, onDeleteAttendance }: StudentsManagerProps) {
   const [isOpenForm, setIsOpenForm] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [loading, setLoading] = useState(false);
@@ -196,12 +196,22 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [birthDate, setBirthDate] = useState('');
-  const [tuitionCycleType, setTuitionCycleType] = useState<TuitionCycleType>(DEFAULT_TUITION_CYCLE_TYPE);
+  const tuitionCycleOptions = useMemo(() => getTuitionCycleOptions(cycleConfigs), [cycleConfigs]);
+  const defaultCycleType = tuitionCycleOptions[0]?.type || DEFAULT_TUITION_CYCLE_TYPE;
+  const [tuitionCycleType, setTuitionCycleType] = useState<TuitionCycleType>(defaultCycleType);
   const [selectedShifts, setSelectedShifts] = useState<string[]>([]);
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
   const [joinDate, setJoinDate] = useState(new Date().toISOString().split('T')[0]);
   const [formShiftSearch, setFormShiftSearch] = useState('');
   const [formDayFilter, setFormDayFilter] = useState<string>('all');
+
+  useEffect(() => {
+    if (tuitionCycleOptions.length === 0) return;
+    const exists = tuitionCycleOptions.some((option: { type: string }) => option.type === tuitionCycleType);
+    if (!exists) {
+      setTuitionCycleType(defaultCycleType);
+    }
+  }, [tuitionCycleOptions, tuitionCycleType, defaultCycleType]);
 
   const dayOrder: Record<string, number> = {
     'Thứ 2': 1,
@@ -269,7 +279,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
     setPhone('');
     setEmail('');
     setBirthDate('');
-    setTuitionCycleType(DEFAULT_TUITION_CYCLE_TYPE);
+    setTuitionCycleType(defaultCycleType);
     setSelectedShifts([]);
     setStatus('active');
     setJoinDate(new Date().toISOString().split('T')[0]);
@@ -284,7 +294,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
     setPhone(student.phone);
     setEmail(student.email || '');
     setBirthDate(student.birthDate || '');
-    setTuitionCycleType(student.tuitionCycleType || DEFAULT_TUITION_CYCLE_TYPE);
+    setTuitionCycleType(student.tuitionCycleType || defaultCycleType);
     setSelectedShifts(student.shifts || []);
     setStatus(student.status);
     setJoinDate(student.joinDate);
@@ -384,7 +394,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
 
     const matchesPackage =
       selectedPackageFilter === 'all' ||
-      getTuitionCycleConfig(student.tuitionCycleType).type === selectedPackageFilter;
+      getTuitionCycleConfig(student.tuitionCycleType, cycleConfigs).type === selectedPackageFilter;
 
     const matchesShift = (() => {
       if (!student.shifts || student.shifts.length === 0) return false;
@@ -411,7 +421,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
   });
 
   const handleExport = () => {
-    exportStudentsList(filteredStudents, shifts);
+    exportStudentsList(filteredStudents, shifts, cycleConfigs);
   };
 
   const absenceSummaryByStudent = useMemo(() => {
@@ -421,12 +431,13 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
       summaryMap[student.id] = getStudentAbsenceSummary(
         attendances,
         student.id,
-        student.tuitionCycleType
+        student.tuitionCycleType,
+        cycleConfigs
       );
     });
 
     return summaryMap;
-  }, [students, attendances]);
+  }, [students, attendances, cycleConfigs]);
 
   const historyRows = useMemo(() => {
     if (!historyStudent) return [];
@@ -622,9 +633,9 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
             className="tempo-select w-full pl-10 py-2 rounded-xl text-slate-700 text-sm font-medium bg-white cursor-pointer"
           >
             <option value="all">Tất cả gói học phí</option>
-            {TUITION_CYCLE_OPTIONS.map((option) => {
+            {tuitionCycleOptions.map((option: { type: string; label: string }) => {
               const packageCount = students.filter(
-                (student) => getTuitionCycleConfig(student.tuitionCycleType).type === option.type
+                (student) => getTuitionCycleConfig(student.tuitionCycleType, cycleConfigs).type === option.type
               ).length;
               return (
                 <option key={option.type} value={option.type}>
@@ -682,7 +693,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                   const studentShifts = (student.shifts || []).map(shId => {
                     return shifts.find(s => s.id === shId);
                   }).filter(Boolean);
-                  const cycleConfig = getTuitionCycleConfig(student.tuitionCycleType);
+                  const cycleConfig = getTuitionCycleConfig(student.tuitionCycleType, cycleConfigs);
                   const absenceSummary = absenceSummaryByStudent[student.id] || {
                     excusedAbsenceCount: 0,
                     unexcusedAbsenceCount: 0,
@@ -694,9 +705,11 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                     student.id,
                     student.tuitionCycleType,
                     cycleConfig.sessionsTarget,
-                    cycleConfig.warningFromSession
+                    cycleConfig.warningFromSession,
+                    cycleConfigs
                   );
                   const progressPercent = Math.round((progress.currentCycleSessions / cycleConfig.sessionsTarget) * 100);
+                  const thresholds = getAbsenceThresholds(student.tuitionCycleType, cycleConfigs);
                   const birthdayToday = isTodayBirthday(student.birthDate);
 
                   return (
@@ -800,24 +813,24 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                             <div className="mt-2 space-y-1">
                               {absenceSummary.hasReachedExcusedThreshold && (
                                 <div className={`rounded-md border px-2 py-1 text-[10px] font-bold ${
-                                  absenceSummary.excusedAbsenceCount > EXCUSED_ABSENCE_FREE_SESSIONS
+                                  absenceSummary.excusedAbsenceCount > thresholds.excusedFree
                                     ? 'border-rose-200 bg-rose-50 text-rose-700'
                                     : 'border-amber-200 bg-amber-50 text-amber-700'
                                 }`}>
-                                  {absenceSummary.excusedAbsenceCount > EXCUSED_ABSENCE_FREE_SESSIONS
-                                    ? `Cảnh báo: Vắng có phép ${absenceSummary.excusedAbsenceCount}/${EXCUSED_ABSENCE_FREE_SESSIONS} (vượt ngưỡng)`
-                                    : `Cảnh báo: Vắng có phép ${absenceSummary.excusedAbsenceCount}/${EXCUSED_ABSENCE_FREE_SESSIONS} (chạm ngưỡng)`}
+                                  {absenceSummary.excusedAbsenceCount > thresholds.excusedFree
+                                    ? `Cảnh báo: Vắng có phép ${absenceSummary.excusedAbsenceCount}/${thresholds.excusedFree} (vượt ngưỡng)`
+                                    : `Cảnh báo: Vắng có phép ${absenceSummary.excusedAbsenceCount}/${thresholds.excusedFree} (chạm ngưỡng)`}
                                 </div>
                               )}
                               {absenceSummary.hasReachedUnexcusedThreshold && (
                                 <div className={`rounded-md border px-2 py-1 text-[10px] font-bold ${
-                                  absenceSummary.unexcusedAbsenceCount > UNEXCUSED_ABSENCE_FREE_SESSIONS
+                                  absenceSummary.unexcusedAbsenceCount > thresholds.unexcusedFree
                                     ? 'border-rose-200 bg-rose-50 text-rose-700'
                                     : 'border-amber-200 bg-amber-50 text-amber-700'
                                 }`}>
-                                  {absenceSummary.unexcusedAbsenceCount > UNEXCUSED_ABSENCE_FREE_SESSIONS
-                                    ? `Cảnh báo: Vắng không phép ${absenceSummary.unexcusedAbsenceCount}/${UNEXCUSED_ABSENCE_FREE_SESSIONS} (vượt ngưỡng)`
-                                    : `Cảnh báo: Vắng không phép ${absenceSummary.unexcusedAbsenceCount}/${UNEXCUSED_ABSENCE_FREE_SESSIONS} (chạm ngưỡng)`}
+                                  {absenceSummary.unexcusedAbsenceCount > thresholds.unexcusedFree
+                                    ? `Cảnh báo: Vắng không phép ${absenceSummary.unexcusedAbsenceCount}/${thresholds.unexcusedFree} (vượt ngưỡng)`
+                                    : `Cảnh báo: Vắng không phép ${absenceSummary.unexcusedAbsenceCount}/${thresholds.unexcusedFree} (chạm ngưỡng)`}
                                 </div>
                               )}
                             </div>
@@ -946,7 +959,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                   </label>
                   <DatePicker
                     selected={parseDateString(birthDate)}
-                    onChange={(date) => setBirthDate(formatDateString(date as Date | null))}
+                    onChange={(date: Date | null) => setBirthDate(formatDateString(date))}
                     dateFormat="dd/MM/yyyy"
                     placeholderText="Chọn ngày sinh"
                     showMonthDropdown
@@ -963,7 +976,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                   </label>
                   <DatePicker
                     selected={parseDateString(joinDate)}
-                    onChange={(date) => setJoinDate(formatDateString(date as Date | null))}
+                    onChange={(date: Date | null) => setJoinDate(formatDateString(date))}
                     dateFormat="dd/MM/yyyy"
                     placeholderText="Chọn ngày nhập học"
                     showMonthDropdown
@@ -1017,7 +1030,7 @@ export default function StudentsManager({ students, shifts, attendances, onAddSt
                   onChange={(e) => setTuitionCycleType(e.target.value as TuitionCycleType)}
                   className="tempo-select w-full px-3.5 py-2 rounded-xl text-slate-700 text-sm font-medium bg-white"
                 >
-                  {TUITION_CYCLE_OPTIONS.map((option) => (
+                  {tuitionCycleOptions.map((option: { type: string; label: string }) => (
                     <option key={option.type} value={option.type}>
                       {option.label}
                     </option>
