@@ -642,24 +642,7 @@ export default function TuitionManager({
           </div>
         </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-            Lọc theo số lần chu kỳ
-          </label>
-          <select
-            value={selectedCycleFilter}
-            onChange={(e) => setSelectedCycleFilter(e.target.value)}
-            className="tempo-select w-full px-3.5 py-2 rounded-xl text-slate-700 text-sm font-medium h-9.5 bg-white"
-          >
-            <option value="current">Chu kỳ hiện tại (tự động)</option>
-            {Array.from({ length: maxCycleIndex }, (_, i) => i + 1).map((cycle) => (
-              <option key={cycle} value={String(cycle)}>
-                Chu kỳ {cycle}
-              </option>
-            ))}
-          </select>
-        </div>
-
+        
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
             Lọc theo loại chu kỳ
@@ -673,6 +656,24 @@ export default function TuitionManager({
             {tuitionCycleOptions.map((option: { type: string; label: string }) => (
               <option key={option.type} value={option.type}>
                 {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+            Lọc theo số lần chu kỳ
+          </label>
+          <select
+            value={selectedCycleFilter}
+            onChange={(e) => setSelectedCycleFilter(e.target.value)}
+            className="tempo-select w-full px-3.5 py-2 rounded-xl text-slate-700 text-sm font-medium h-9.5 bg-white"
+          >
+            <option value="current">Chu kỳ hiện tại (tự động)</option>
+            {Array.from({ length: maxCycleIndex }, (_, i) => i + 1).map((cycle) => (
+              <option key={cycle} value={String(cycle)}>
+                Chu kỳ {cycle}
               </option>
             ))}
           </select>

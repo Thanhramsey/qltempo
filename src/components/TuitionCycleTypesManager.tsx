@@ -74,7 +74,7 @@ export default function TuitionCycleTypesManager({
     const safeWarning = Math.max(1, Math.min(Math.floor(warningFromSession), safeSessionsTarget));
 
     if (!name.trim()) {
-      showToast('warning', 'Vui long nhap ten loai chu ky.');
+      showToast('warning', 'Vui lòng nhập tên loại chu kỳ.');
       return;
     }
 
@@ -90,7 +90,7 @@ export default function TuitionCycleTypesManager({
           unexcusedAbsenceFree: Math.max(0, Math.floor(unexcusedAbsenceFree)),
           warningFromSession: safeWarning,
         });
-        showToast('success', 'Da cap nhat loai chu ky.');
+        showToast('success', 'Đã cập nhật loại chu kỳ.');
       } else {
         await onAddCycleConfig({
           name: name.trim(),
@@ -100,12 +100,12 @@ export default function TuitionCycleTypesManager({
           unexcusedAbsenceFree: Math.max(0, Math.floor(unexcusedAbsenceFree)),
           warningFromSession: safeWarning,
         });
-        showToast('success', 'Da them loai chu ky moi.');
+        showToast('success', 'Đã thêm loại chu kỳ mới.');
       }
       closeForm();
     } catch (err) {
       console.error(err);
-      showToast('error', 'Khong the luu loai chu ky. Vui long thu lai.');
+      showToast('error', 'Không thể lưu loại chu kỳ. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -114,22 +114,22 @@ export default function TuitionCycleTypesManager({
   const handleDelete = async (config: TuitionCycleConfigRecord) => {
     const usageCount = studentsUsingConfigCount(config.id);
     if (usageCount > 0) {
-      showToast('warning', `Khong the xoa. Dang co ${usageCount} hoc sinh su dung loai chu ky nay.`);
+      showToast('warning', `Không thể xóa. Đang có ${usageCount} học sinh sử dụng loại chu kỳ này.`);
       return;
     }
 
     if (cycleConfigs.length <= 1) {
-      showToast('warning', 'Can it nhat 1 loai chu ky trong he thong.');
+      showToast('warning', 'Cần ít nhất 1 loại chu kỳ trong hệ thống.');
       return;
     }
 
     setLoading(true);
     try {
       await onDeleteCycleConfig(config.id);
-      showToast('success', 'Da xoa loai chu ky.');
+      showToast('success', 'Đã xóa loại chu kỳ.');
     } catch (err) {
       console.error(err);
-      showToast('error', 'Khong the xoa loai chu ky.');
+      showToast('error', 'Không thể xóa loại chu kỳ.');
     } finally {
       setLoading(false);
     }
@@ -143,10 +143,10 @@ export default function TuitionCycleTypesManager({
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <BookOpen className="text-indigo-600" size={24} />
-            Loai Chu Ky Hoc Phi
+            Loại Chu Kỳ Học Phí
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Cau hinh ten chu ky, so buoi, gia tien va nguong vang cho phep.
+            Cấu hình tên chu kỳ, số buổi, giá tiền và ngưỡng vắng cho phép.
           </p>
         </div>
         <button
@@ -154,26 +154,26 @@ export default function TuitionCycleTypesManager({
           className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-md shadow-indigo-100 cursor-pointer transition-all duration-200"
         >
           <Plus size={16} />
-          Them Loai Chu Ky
+          Thêm Loại Chu Kỳ
         </button>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {sortedConfigs.length === 0 ? (
-          <div className="p-10 text-center text-slate-500">Chua co loai chu ky nao.</div>
+          <div className="p-10 text-center text-slate-500">Chưa có loại chu kỳ nào.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-left border-collapse">
               <thead>
                 <tr className="bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 border-b border-indigo-300 text-white text-xs font-bold uppercase tracking-wider">
-                  <th className="px-6 py-4">Ten chu ky</th>
-                  <th className="px-6 py-4">So buoi</th>
-                  <th className="px-6 py-4">Gia tien</th>
-                  <th className="px-6 py-4">Vang co phep</th>
-                  <th className="px-6 py-4">Vang khong phep</th>
-                  <th className="px-6 py-4">Canh bao tu buoi</th>
-                  <th className="px-6 py-4">So hoc sinh dung</th>
-                  <th className="px-6 py-4 text-right">Tac vu</th>
+                  <th className="px-6 py-4">Tên chu kỳ</th>
+                  <th className="px-6 py-4">Số buổi</th>
+                  <th className="px-6 py-4">Giá tiền</th>
+                  <th className="px-6 py-4">Vắng có phép</th>
+                  <th className="px-6 py-4">Vắng không phép</th>
+                  <th className="px-6 py-4">Cảnh báo từ buổi</th>
+                  <th className="px-6 py-4">Số học sinh dùng</th>
+                  <th className="px-6 py-4 text-right">Tác vụ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
@@ -181,7 +181,7 @@ export default function TuitionCycleTypesManager({
                   <tr key={config.id} className="hover:bg-slate-50/50">
                     <td className="px-6 py-4 font-semibold text-slate-800">{config.name}</td>
                     <td className="px-6 py-4">{config.sessionsTarget}</td>
-                    <td className="px-6 py-4 font-bold text-indigo-700">{config.feeVnd.toLocaleString()} d</td>
+                    <td className="px-6 py-4 font-bold text-indigo-700">{config.feeVnd.toLocaleString()} đ</td>
                     <td className="px-6 py-4">{config.excusedAbsenceFree}</td>
                     <td className="px-6 py-4">{config.unexcusedAbsenceFree}</td>
                     <td className="px-6 py-4">{config.warningFromSession}</td>
@@ -191,7 +191,7 @@ export default function TuitionCycleTypesManager({
                         <button
                           onClick={() => openEdit(config)}
                           className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                          title="Sua"
+                          title="Sửa"
                           disabled={loading}
                         >
                           <Edit2 size={15} />
@@ -199,7 +199,7 @@ export default function TuitionCycleTypesManager({
                         <button
                           onClick={() => handleDelete(config)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                          title="Xoa"
+                          title="Xóa"
                           disabled={loading}
                         >
                           <Trash2 size={15} />
@@ -220,7 +220,7 @@ export default function TuitionCycleTypesManager({
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <BookOpen size={20} className="text-indigo-600" />
-                {editingConfig ? 'Chinh Sua Loai Chu Ky' : 'Them Loai Chu Ky'}
+                {editingConfig ? 'Chỉnh Sửa Loại Chu Kỳ' : 'Thêm Loại Chu Kỳ'}
               </h3>
               <button
                 onClick={closeForm}
@@ -232,20 +232,20 @@ export default function TuitionCycleTypesManager({
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Ten chu ky *</label>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Tên chu kỳ *</label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Vi du: Chu ky 12 buoi"
+                  placeholder="Ví dụ: Chu kỳ 12 buổi"
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:border-indigo-500 font-semibold"
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">So buoi hoc *</label>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Số buổi học *</label>
                   <input
                     type="number"
                     min={1}
@@ -256,7 +256,7 @@ export default function TuitionCycleTypesManager({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Gia tien (VND) *</label>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Giá tiền (VND) *</label>
                   <input
                     type="number"
                     min={0}
@@ -270,7 +270,7 @@ export default function TuitionCycleTypesManager({
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Vang co phep cho phep</label>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Vắng có phép cho phép</label>
                   <input
                     type="number"
                     min={0}
@@ -281,7 +281,7 @@ export default function TuitionCycleTypesManager({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Vang khong phep cho phep</label>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Vắng không phép cho phép</label>
                   <input
                     type="number"
                     min={0}
@@ -292,7 +292,7 @@ export default function TuitionCycleTypesManager({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Canh bao tu buoi</label>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Cảnh báo từ buổi</label>
                   <input
                     type="number"
                     min={1}
@@ -310,7 +310,7 @@ export default function TuitionCycleTypesManager({
                   onClick={closeForm}
                   className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
                 >
-                  Huy
+                  Hủy
                 </button>
                 <button
                   type="submit"
@@ -318,7 +318,7 @@ export default function TuitionCycleTypesManager({
                   className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold rounded-xl text-sm shadow-md cursor-pointer flex items-center gap-1"
                 >
                   <Save size={14} />
-                  <span>{editingConfig ? 'Luu Chinh Sua' : 'Them Moi'}</span>
+                  <span>{editingConfig ? 'Lưu Chỉnh Sửa' : 'Thêm Mới'}</span>
                 </button>
               </div>
             </form>
