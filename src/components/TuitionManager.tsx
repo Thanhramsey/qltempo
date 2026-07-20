@@ -278,7 +278,7 @@ export default function TuitionManager({
     }
   };
 
-  const refreshSnapshotPreview = (row: TuitionRow) => {
+  const refreshSnapshotPreview = async (row: TuitionRow) => {
     const sessionsTarget = getRowSessionsTarget(row);
     const thresholds = getAbsenceThresholds(row.student.tuitionCycleType, cycleConfigs);
     const studentHistory = attendances
@@ -292,9 +292,18 @@ export default function TuitionManager({
     let countedSessionsSoFar = 0;
     let excusedAbsenceCount = 0;
     let unexcusedAbsenceCount = 0;
+    let lastTrackedCycleIndex = 1;
 
     const allCycleAttendances = studentHistory.reduce<Array<Attendance & { allowanceNote?: string; isViolationCounted?: boolean }>>((acc, att) => {
       const cycleIndexForThisAttendance = Math.floor(countedSessionsSoFar / sessionsTarget) + 1;
+
+      // Reset absence allowances when entering a new cycle
+      if (cycleIndexForThisAttendance !== lastTrackedCycleIndex) {
+        excusedAbsenceCount = 0;
+        unexcusedAbsenceCount = 0;
+        lastTrackedCycleIndex = cycleIndexForThisAttendance;
+      }
+
       let isCountedSession = false;
       let allowanceNote = '';
 
@@ -357,7 +366,7 @@ export default function TuitionManager({
       return `${shiftName} - ${scheduleLabel}`;
     };
 
-    const imageUrl = generateStudentTuitionSnapshotImage({
+    const imageUrl = await generateStudentTuitionSnapshotImage({
       studentName: row.student.name,
       phone: row.student.phone || '---',
       cycleIndex: row.cycleIndex,
@@ -404,7 +413,7 @@ export default function TuitionManager({
 
   const handleExportSnapshot = (row: TuitionRow) => {
     setPreviewRow(row);
-    refreshSnapshotPreview(row);
+    void refreshSnapshotPreview(row);
     setIsPreviewOpen(true);
   };
 

@@ -196,7 +196,7 @@ export function exportReceiptImage(data: {
   document.body.removeChild(link);
 }
 
-export function generateStudentTuitionSnapshotImage(data: {
+export async function generateStudentTuitionSnapshotImage(data: {
   studentName: string;
   phone: string;
   cycleIndex: number;
@@ -222,7 +222,7 @@ export function generateStudentTuitionSnapshotImage(data: {
     extraLines?: string[];
   };
   sessions: Array<{ date: string; shiftLabel: string; status?: string; note?: string; isConvertedPresent?: boolean }>;
-}): string {
+}): Promise<string> {
   const sessionsToRender = data.sessions;
   const tableX = 50;
   const tableWidth = 800;
@@ -305,7 +305,7 @@ export function generateStudentTuitionSnapshotImage(data: {
   if (shouldShowCycleProgress) {
     infoLines.push(`Chu kỳ hiện tại: ${data.cycleIndex}`);
     infoLines.push(
-      `Tiến độ chu kỳ: ${data.currentCycleSessions}/${data.sessionsTarget} buổi (Tổng buổi được tính: ${data.totalPresentSessions} buổi)`
+      `Tiến độ chu kỳ: ${data.currentCycleSessions}/${data.sessionsTarget} buổi (Tổng buổi được tính: ${data.currentCycleSessions} buổi)`
     );
   }
   if (shouldShowTuitionAmounts) {
@@ -336,7 +336,12 @@ export function generateStudentTuitionSnapshotImage(data: {
   const detailsEndY = detailLines.length > 0 ? detailsStartY + (detailLines.length - 1) * 24 : detailsStartY;
   const footerY = detailsEndY + 30;
 
-  const panelBottomY = (shouldShowFooter ? footerY : detailsEndY) + 20;
+  const bankBoxSize = 200;
+  const bankImageBottomY = badgeY + 18 + bankBoxSize + 20;
+  const panelBottomY = Math.max(
+    (shouldShowFooter ? footerY : detailsEndY) + 20,
+    bankImageBottomY
+  );
   const sessionsPanelHeight = panelBottomY - sessionsPanelY;
   const dynamicCanvasHeight = Math.max(1200, panelBottomY + 40);
 
@@ -345,6 +350,11 @@ export function generateStudentTuitionSnapshotImage(data: {
   canvas.height = dynamicCanvasHeight;
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
+
+  const bankImageCandidates = buildQrCandidates('bank.jpg').concat(
+    buildQrCandidates('bank.png')
+  );
+  const bankImage = await loadFirstAvailableImage(bankImageCandidates);
 
   const bg = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
   bg.addColorStop(0, '#f8fafc');
@@ -508,6 +518,17 @@ export function generateStudentTuitionSnapshotImage(data: {
   ctx.fillStyle = paidEnough ? '#065f46' : '#92400e';
   ctx.font = 'bold 13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
   ctx.fillText(paidEnough ? 'TRẠNG THÁI: ĐÃ ĐỦ' : 'TRẠNG THÁI: CHƯA ĐỦ', badgeX + 12, badgeY - 2);
+
+  if (bankImage) {
+    const bankBelowY = badgeY + 18;
+    const bankBelowX = canvas.width - bankBoxSize - 20;
+    const ratio = Math.min(bankBoxSize / bankImage.width, bankBoxSize / bankImage.height);
+    const drawW = bankImage.width * ratio;
+    const drawH = bankImage.height * ratio;
+    const drawX = bankBelowX + (bankBoxSize - drawW) / 2;
+    const drawY = bankBelowY + (bankBoxSize - drawH) / 2;
+    ctx.drawImage(bankImage, drawX, drawY, drawW, drawH);
+  }
 
   if (detailLines.length > 0) {
     ctx.fillStyle = '#64748b';
@@ -1053,7 +1074,7 @@ export function downloadTuitionInvoicePdf(dataUrl: string, fileName: string) {
 }
 
 // Backward-compat export for stale HMR modules still importing the old function name.
-export function exportStudentTuitionSnapshot(data: {
+export async function exportStudentTuitionSnapshot(data: {
   studentName: string;
   phone: string;
   cycleIndex: number;
@@ -1080,7 +1101,7 @@ export function exportStudentTuitionSnapshot(data: {
   };
   sessions: Array<{ date: string; shiftLabel: string; status?: string; note?: string; isConvertedPresent?: boolean }>;
 }) {
-  const dataUrl = generateStudentTuitionSnapshotImage(data);
+  const dataUrl = await generateStudentTuitionSnapshotImage(data);
   const fileName = `BaoCao_${data.studentName.replace(/\s+/g, '_')}_chu_ky_${data.cycleIndex}.png`;
   downloadStudentTuitionSnapshotImage(dataUrl, fileName);
 }
