@@ -1081,7 +1081,7 @@ export default function TuitionManager({
                   <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Chỉnh màu ảnh</div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <label className="flex items-center justify-between gap-2 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700">
-                      <span>Màu chữ</span>
+                      <span>Màu chữ nội dung tự thêm</span>
                       <input
                         type="color"
                         value={snapshotColors.textColor}

@@ -305,6 +305,7 @@ export function generateStudentTuitionSnapshotImage(data: {
     infoLines.push(`Học phí chu kỳ: ${data.totalAmount.toLocaleString()} đ`);
     infoLines.push(`Đã đóng: ${data.amountPaid.toLocaleString()} đ | Còn nợ: ${debt.toLocaleString()} đ`);
   }
+  const defaultInfoLineCount = infoLines.length;
   extraLines.forEach((line) => infoLines.push(line));
 
   const infoPanelHeight = Math.max(230, 115 + Math.max(infoLines.length - 1, 0) * infoLineGap);
@@ -378,11 +379,14 @@ export function generateStudentTuitionSnapshotImage(data: {
   ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
   infoLines.forEach((line, lineIndex) => {
     const lineY = infoLineStartY + lineIndex * infoLineGap;
-    if (line.startsWith('Đã đóng:')) {
+    if (lineIndex >= defaultInfoLineCount) {
+      ctx.fillStyle = customTextColor;
+      ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    } else if (line.startsWith('Đã đóng:')) {
       ctx.fillStyle = debt === 0 ? '#059669' : '#b45309';
       ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
     } else {
-      ctx.fillStyle = customTextColor;
+      ctx.fillStyle = '#0f172a';
       ctx.font = '16px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
     }
     ctx.fillText(line, 50, lineY);
