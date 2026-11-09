@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Attendance, Payment, Shift, Student } from '../types';
+import { Attendance, Payment, Shift, Student, TuitionCycleConfigRecord } from '../types';
 import { exportToCSV } from '../utils/csvExport';
 import { BarChart3, Download, Users, Calendar, CircleDollarSign, CheckCircle2, TrendingUp, AlertTriangle, Image, X } from 'lucide-react';
 import { getStudentCycleProgress, getTuitionCycleConfig } from '../utils/tuitionCycle';
@@ -10,6 +10,7 @@ interface ReportsManagerProps {
   shifts: Shift[];
   attendances: Attendance[];
   payments: Payment[];
+  cycleConfigs: TuitionCycleConfigRecord[];
 }
 
 interface StudentRangeAttendanceRow {
@@ -32,7 +33,7 @@ function formatDateVN(isoDate: string) {
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
 }
 
-export default function ReportsManager({ students, shifts, attendances, payments }: ReportsManagerProps) {
+export default function ReportsManager({ students, shifts, attendances, payments, cycleConfigs }: ReportsManagerProps) {
   const [fromDate, setFromDate] = useState<string>(getTodayISO());
   const [toDate, setToDate] = useState<string>(getTodayISO());
   const [previewImageUrl, setPreviewImageUrl] = useState<string>('');
@@ -65,13 +66,14 @@ export default function ReportsManager({ students, shifts, attendances, payments
     students
       .filter((st) => st.status === 'active')
       .forEach((student) => {
-        const cycleConfig = getTuitionCycleConfig(student.tuitionCycleType);
+        const cycleConfig = getTuitionCycleConfig(student.tuitionCycleType, cycleConfigs);
         const progress = getStudentCycleProgress(
           attendances,
           student.id,
           student.tuitionCycleType,
           cycleConfig.sessionsTarget,
-          cycleConfig.warningFromSession
+          cycleConfig.warningFromSession,
+          cycleConfigs
         );
         const key = `${student.id}_${progress.currentCycleIndex}`;
         const payment = latestPaymentByStudentCycle.get(key);
@@ -120,7 +122,7 @@ export default function ReportsManager({ students, shifts, attendances, payments
       studentsPerShift,
       busiestShift,
     };
-  }, [students, shifts, attendances, payments]);
+  }, [students, shifts, attendances, payments, cycleConfigs]);
 
   const rangeAttendances = useMemo(() => {
     const start = fromDate <= toDate ? fromDate : toDate;

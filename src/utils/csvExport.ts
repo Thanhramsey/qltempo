@@ -1,3 +1,6 @@
+import { TuitionCycleConfigRecord } from '../types';
+import { getTuitionCycleConfig } from './tuitionCycle';
+
 /**
  * Export generic raw data to a CSV file downloadable in Excel
  * Includes UTF-8 BOM so Vietnamese accent marks render perfectly
@@ -26,7 +29,7 @@ export function exportToCSV(filename: string, headers: string[], rows: string[][
 /**
  * Export student list helper
  */
-export function exportStudentsList(students: any[], shifts: any[]) {
+export function exportStudentsList(students: any[], shifts: any[], cycleConfigs: TuitionCycleConfigRecord[]) {
   const headers = ["Mã Học Sinh", "Họ Tên", "Số Điện Thoại", "Email", "Ngày Sinh", "Loại Chu Kỳ", "Ca Học", "Trạng Thái", "Ngày Nhập Học"];
   
   const rows = students.map(student => {
@@ -37,7 +40,8 @@ export function exportStudentsList(students: any[], shifts: any[]) {
       })
       .join("; ");
       
-    const cycleLabel = student.tuitionCycleType === 'cycle_8' ? '800.000đ / 8 buổi' : '2.400.000đ / 24 buổi';
+    const cycleConfig = getTuitionCycleConfig(student.tuitionCycleType, cycleConfigs);
+    const cycleLabel = cycleConfig.label;
 
     return [
       student.id,

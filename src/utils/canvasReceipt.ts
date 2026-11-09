@@ -196,7 +196,7 @@ export function exportReceiptImage(data: {
   document.body.removeChild(link);
 }
 
-export function generateStudentTuitionSnapshotImage(data: {
+export async function generateStudentTuitionSnapshotImage(data: {
   studentName: string;
   phone: string;
   cycleIndex: number;
@@ -221,8 +221,8 @@ export function generateStudentTuitionSnapshotImage(data: {
     reportHeaderBgColor?: string;
     extraLines?: string[];
   };
-  sessions: Array<{ date: string; shiftLabel: string; status?: string; note?: string }>;
-}): string {
+  sessions: Array<{ date: string; shiftLabel: string; status?: string; note?: string; isConvertedPresent?: boolean }>;
+}): Promise<string> {
   const sessionsToRender = data.sessions;
   const tableX = 50;
   const tableWidth = 800;
@@ -272,15 +272,22 @@ export function generateStudentTuitionSnapshotImage(data: {
   const sessionRows = sessionsToRender.map((session) => {
     const isUnexcused = session.status === 'absent_unexcused';
     const isExcused = session.status === 'absent_excused';
-    const baseStatusLabel = isUnexcused ? 'Vắng KP' : isExcused ? 'Vắng phép' : 'Có mặt';
-    const statusLabel = session.note ? `${baseStatusLabel} - ${session.note}` : baseStatusLabel;
-    const statusLines = wrapTextLines(statusLabel, statusColWidth - 16, '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif');
+    const isPresent = !isUnexcused && !isExcused;
+    const statusLabel = isUnexcused
+      ? (session.note ? `Vắng KP - ${session.note}` : 'Vắng KP')
+      : isExcused
+      ? (session.note ? `Vắng phép - ${session.note}` : 'Vắng phép')
+      : '';
+    const statusLines = statusLabel
+      ? wrapTextLines(statusLabel, statusColWidth - 16, '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif')
+      : [];
     const rowHeight = Math.max(minRowHeight, statusLines.length * 16 + 10);
 
     return {
       session,
       isUnexcused,
       isExcused,
+      isPresent,
       statusLines,
       rowHeight,
     };
@@ -298,7 +305,7 @@ export function generateStudentTuitionSnapshotImage(data: {
   if (shouldShowCycleProgress) {
     infoLines.push(`Chu kỳ hiện tại: ${data.cycleIndex}`);
     infoLines.push(
-      `Tiến độ chu kỳ: ${data.currentCycleSessions}/${data.sessionsTarget} buổi (Tổng buổi được tính: ${data.totalPresentSessions} buổi)`
+      `Tiến độ chu kỳ: ${data.currentCycleSessions}/${data.sessionsTarget} buổi (Tổng buổi được tính: ${data.currentCycleSessions} buổi)`
     );
   }
   if (shouldShowTuitionAmounts) {
@@ -330,7 +337,12 @@ export function generateStudentTuitionSnapshotImage(data: {
   const detailsEndY = detailLines.length > 0 ? detailsStartY + (detailLines.length - 1) * 24 : detailsStartY;
   const footerY = detailsEndY + 30;
 
-  const panelBottomY = (shouldShowFooter ? footerY : detailsEndY) + 20;
+  const bankBoxSize = 200;
+  const bankImageBottomY = badgeY + 18 + bankBoxSize + 20;
+  const panelBottomY = Math.max(
+    (shouldShowFooter ? footerY : detailsEndY) + 20,
+    bankImageBottomY
+  );
   const sessionsPanelHeight = panelBottomY - sessionsPanelY;
   const dynamicCanvasHeight = Math.max(1200, panelBottomY + 40);
 
@@ -339,6 +351,11 @@ export function generateStudentTuitionSnapshotImage(data: {
   canvas.height = dynamicCanvasHeight;
   const ctx = canvas.getContext('2d');
   if (!ctx) return '';
+
+  const bankImageCandidates = buildQrCandidates('bank.jpg').concat(
+    buildQrCandidates('bank.png')
+  );
+  const bankImage = await loadFirstAvailableImage(bankImageCandidates);
 
   const bg = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
   bg.addColorStop(0, '#f8fafc');
@@ -472,10 +489,17 @@ export function generateStudentTuitionSnapshotImage(data: {
     ctx.fillText(row.session.date.split('-').reverse().join('/'), col1X + 8, rowCenterY);
     ctx.fillText(row.session.shiftLabel, col2X + 8, rowCenterY);
 
-    ctx.fillStyle = row.isUnexcused ? '#dc2626' : row.isExcused ? '#d97706' : '#16a34a';
-    row.statusLines.forEach((line, lineIndex) => {
-      ctx.fillText(line, col3X + 8, rowTop + 18 + lineIndex * 16);
-    });
+    if (row.isPresent) {
+      ctx.fillStyle = '#16a34a';
+      ctx.font = 'bold 18px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillText('✓', col3X + 12, rowCenterY);
+      ctx.font = '13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+    } else {
+      ctx.fillStyle = row.isUnexcused ? '#dc2626' : '#d97706';
+      row.statusLines.forEach((line, lineIndex) => {
+        ctx.fillText(line, col3X + 8, rowTop + 18 + lineIndex * 16);
+      });
+    }
 
     rowTop += row.rowHeight;
   });
@@ -498,6 +522,17 @@ export function generateStudentTuitionSnapshotImage(data: {
   ctx.fillStyle = paidEnough ? '#065f46' : '#92400e';
   ctx.font = 'bold 13px system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
   ctx.fillText(paidEnough ? 'TRẠNG THÁI: ĐÃ ĐỦ' : 'TRẠNG THÁI: CHƯA ĐỦ', badgeX + 12, badgeY - 2);
+
+  if (bankImage) {
+    const bankBelowY = badgeY + 18;
+    const bankBelowX = canvas.width - bankBoxSize - 20;
+    const ratio = Math.min(bankBoxSize / bankImage.width, bankBoxSize / bankImage.height);
+    const drawW = bankImage.width * ratio;
+    const drawH = bankImage.height * ratio;
+    const drawX = bankBelowX + (bankBoxSize - drawW) / 2;
+    const drawY = bankBelowY + (bankBoxSize - drawH) / 2;
+    ctx.drawImage(bankImage, drawX, drawY, drawW, drawH);
+  }
 
   if (detailLines.length > 0) {
     ctx.fillStyle = '#64748b';
@@ -681,6 +716,9 @@ export async function generateTuitionInvoiceImage(data: {
   ctx.roundRect(cardX + 10, cardY + 10, cardW - 20, 246, 20);
   ctx.fill();
 
+  // Lift header content a bit so both left and right blocks look centered in the blue box.
+  const headerContentOffsetY = -20;
+
   ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
   ctx.beginPath();
   // ctx.roundRect(cardX + 26, cardY + 34, 276, 42, 21);
@@ -692,22 +730,22 @@ export async function generateTuitionInvoiceImage(data: {
 
   ctx.textAlign = 'left';
   ctx.font = '700 60px "Georgia", serif';
-  ctx.fillText(data.centerName, cardX + 40, cardY + 118);
+  ctx.fillText(data.centerName, cardX + 40, cardY + 118 + headerContentOffsetY);
   ctx.font = 'italic 30px "Georgia", serif';
   ctx.fillStyle = '#e0e7ff';
-  ctx.fillText(data.centerSlogan, cardX + 42, cardY + 164);
+  ctx.fillText(data.centerSlogan, cardX + 42, cardY + 164 + headerContentOffsetY);
 
   ctx.fillStyle = '#dbeafe';
   ctx.font = '500 27px "Segoe UI", "Trebuchet MS", sans-serif';
-  ctx.fillText(`Địa chỉ: ${data.centerAddress}`, cardX + 40, cardY + 212);
-  ctx.fillText(`Email: ${data.centerEmail}  |  Hotline: ${data.centerHotline}`, cardX + 40, cardY + 248);
+  ctx.fillText(`Địa chỉ: ${data.centerAddress}`, cardX + 40, cardY + 212 + headerContentOffsetY);
+  ctx.fillText(`Email: ${data.centerEmail}  |  Hotline: ${data.centerHotline}`, cardX + 40, cardY + 248 + headerContentOffsetY);
 
   ctx.textAlign = 'right';
   ctx.fillStyle = '#ffffff';
   ctx.font = '800 58px "Segoe UI", "Trebuchet MS", sans-serif';
-  ctx.fillText('Thông báo học phí', cardX + cardW - 44, cardY + 118);
+  ctx.fillText('Thông báo học phí', cardX + cardW - 44, cardY + 118 + headerContentOffsetY);
   ctx.font = '600 29px "Segoe UI", "Trebuchet MS", sans-serif';
-  ctx.fillText(`Ngày: ${formatDateVn(data.paymentDate)}`, cardX + cardW - 44, cardY + 170);
+  ctx.fillText(`Ngày: ${formatDateVn(data.paymentDate)}`, cardX + cardW - 44, cardY + 170 + headerContentOffsetY);
 
   const infoX = 90;
   const infoY = 326;
@@ -1040,7 +1078,7 @@ export function downloadTuitionInvoicePdf(dataUrl: string, fileName: string) {
 }
 
 // Backward-compat export for stale HMR modules still importing the old function name.
-export function exportStudentTuitionSnapshot(data: {
+export async function exportStudentTuitionSnapshot(data: {
   studentName: string;
   phone: string;
   cycleIndex: number;
@@ -1065,9 +1103,9 @@ export function exportStudentTuitionSnapshot(data: {
     reportHeaderBgColor?: string;
     extraLines?: string[];
   };
-  sessions: Array<{ date: string; shiftLabel: string; status?: string; note?: string }>;
+  sessions: Array<{ date: string; shiftLabel: string; status?: string; note?: string; isConvertedPresent?: boolean }>;
 }) {
-  const dataUrl = generateStudentTuitionSnapshotImage(data);
+  const dataUrl = await generateStudentTuitionSnapshotImage(data);
   const fileName = `BaoCao_${data.studentName.replace(/\s+/g, '_')}_chu_ky_${data.cycleIndex}.png`;
   downloadStudentTuitionSnapshotImage(dataUrl, fileName);
 }
